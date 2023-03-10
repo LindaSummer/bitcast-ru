@@ -1,0 +1,10 @@
+{
+    "editor.fontSize": 22,
+    "editor.formatOnPaste": true,
+    "editor.formatOnSave": true,
+    // "editor.formatOnSaveMode": true,
+    "editor.acceptSuggestionOnCommitCharacter": true,
+    "editor.acceptSuggestionOnEnter": "smart",
+    "editor.autoClosingBrackets": "languageDefined",
+    "editor.bracketPairColorization.enabled": true,
+}
