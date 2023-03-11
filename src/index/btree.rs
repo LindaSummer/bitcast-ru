@@ -42,77 +42,63 @@ mod tests {
 
     #[test]
     fn test_btree_add() {
-        let mut bt = BTreeIndexer::new();
+        let bt = BTreeIndexer::new();
 
-        assert_eq!(
-            bt.put(
-                "".as_bytes().to_vec(),
-                LogRecordPos {
-                    file_id: 1,
-                    offset: 122,
-                },
-            ),
-            true,
-        );
+        assert!(bt.put(
+            "".as_bytes().to_vec(),
+            LogRecordPos {
+                file_id: 1,
+                offset: 122,
+            },
+        ));
 
-        assert_eq!(
-            bt.put(
-                "".as_bytes().to_vec(),
-                LogRecordPos {
-                    file_id: 1121,
-                    offset: 44,
-                },
-            ),
-            true,
-        );
+        assert!(bt.put(
+            "".as_bytes().to_vec(),
+            LogRecordPos {
+                file_id: 1121,
+                offset: 44,
+            },
+        ));
 
-        assert_eq!(
-            bt.put(
-                "sadsad".as_bytes().to_vec(),
-                LogRecordPos {
-                    file_id: 0,
-                    offset: 0,
-                },
-            ),
-            true,
-        );
-        assert_eq!(
-            bt.put(
-                "ssaaa".as_bytes().to_vec(),
-                LogRecordPos {
-                    file_id: 2131,
-                    offset: 11122,
-                },
-            ),
-            true,
-        );
+        assert!(bt.put(
+            "sadsad".as_bytes().to_vec(),
+            LogRecordPos {
+                file_id: 0,
+                offset: 0,
+            },
+        ));
 
-        assert_eq!(
-            bt.put(
-                vec![1, 2, 3],
-                LogRecordPos {
-                    file_id: 1223,
-                    offset: 1223141,
-                },
-            ),
-            true,
-        );
+        assert!(bt.put(
+            "ssaaa".as_bytes().to_vec(),
+            LogRecordPos {
+                file_id: 2131,
+                offset: 11122,
+            },
+        ));
 
-        assert_eq!(
-            bt.put(
-                vec![],
-                LogRecordPos {
-                    file_id: 1,
-                    offset: 122,
-                },
-            ),
-            true,
-        );
+        assert!(bt.put(
+            vec![1, 2, 3],
+            LogRecordPos {
+                file_id: 1223,
+                offset: 1223141,
+            },
+        ));
+
+        assert!(bt.put(
+            vec![],
+            LogRecordPos {
+                file_id: 1,
+                offset: 122,
+            },
+        ));
     }
 
     #[test]
     fn btree_test_get() {
         let bt = BTreeIndexer::new();
+
+        assert_eq!(bt.get("\0".as_bytes().to_vec()), None);
+
         let res = bt.put(
             "\0".as_bytes().to_vec(),
             LogRecordPos {
@@ -120,7 +106,7 @@ mod tests {
                 offset: 88,
             },
         );
-        assert_eq!(res, true);
+        assert!(res);
         assert_eq!(
             bt.get("\0".as_bytes().to_vec()),
             Some(LogRecordPos {
@@ -128,5 +114,65 @@ mod tests {
                 offset: 88,
             }),
         );
+
+        let res = bt.put(
+            vec![],
+            LogRecordPos {
+                file_id: 0,
+                offset: 881,
+            },
+        );
+
+        assert_eq!(res, true);
+        assert_eq!(
+            bt.get(vec![]),
+            Some(LogRecordPos {
+                file_id: 0,
+                offset: 881,
+            }),
+        );
+
+        let res = bt.put(
+            vec![],
+            LogRecordPos {
+                file_id: 213123,
+                offset: 88222,
+            },
+        );
+
+        assert!(res);
+        assert_eq!(
+            bt.get(vec![]),
+            Some(LogRecordPos {
+                file_id: 213123,
+                offset: 88222,
+            }),
+        );
+    }
+
+    #[test]
+    fn test_bt_delete() {
+        let bt = BTreeIndexer::new();
+
+        assert!(!bt.delete("test-key".as_bytes().to_vec()));
+
+        assert!(bt.put(
+            "test-key".as_bytes().to_vec(),
+            LogRecordPos {
+                file_id: 122,
+                offset: 881
+            }
+        ));
+
+        assert_eq!(
+            bt.get("test-key".as_bytes().to_vec()),
+            Some(LogRecordPos {
+                file_id: 122,
+                offset: 881
+            }),
+        );
+
+        assert!(bt.delete("test-key".as_bytes().to_vec()));
+        assert!(!bt.delete("test-key".as_bytes().to_vec()));
     }
 }
