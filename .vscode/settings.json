@@ -7,4 +7,7 @@
     "editor.acceptSuggestionOnEnter": "smart",
     "editor.autoClosingBrackets": "languageDefined",
     "editor.bracketPairColorization.enabled": true,
+    "editor.tabCompletion": "on",
+    "diffEditor.codeLens": true,
+    "terminal.integrated.fontSize": 18,
 }
