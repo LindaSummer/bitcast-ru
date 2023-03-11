@@ -10,7 +10,4 @@ pub trait IOManager {
 
     /// flush data to consistant file
     fn sync(&mut self) -> Result<()>;
-
-    /// close file handler
-    fn close(&mut self) -> Result<()>;
 }

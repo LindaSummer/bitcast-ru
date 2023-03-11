@@ -8,6 +8,8 @@
     "editor.autoClosingBrackets": "languageDefined",
     "editor.bracketPairColorization.enabled": true,
     "editor.tabCompletion": "on",
+    "editor.cursorStyle": "block",
+    "editor.cursorBlinking": "blink",
     "diffEditor.codeLens": true,
     "terminal.integrated.fontSize": 18,
 }
