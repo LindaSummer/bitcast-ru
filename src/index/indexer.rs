@@ -1,4 +1,4 @@
-use crate::data::log_record_pos::LogRecordPos;
+use crate::data::log_record::LogRecordPos;
 
 /// Indexr an interface for index implementation
 pub trait Indexer: Sync + Send {

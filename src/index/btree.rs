@@ -2,12 +2,18 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use parking_lot::RwLock;
 
-use crate::data::log_record_pos::LogRecordPos;
+use crate::data::log_record::LogRecordPos;
 
-use super::index::Indexer;
+use super::indexer::Indexer;
 
 pub struct BTreeIndexer {
     tree: Arc<RwLock<BTreeMap<Vec<u8>, LogRecordPos>>>,
+}
+
+impl Default for BTreeIndexer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl BTreeIndexer {

@@ -18,6 +18,9 @@ pub enum Errors {
 
     #[error("failed to close file")]
     FailToCloseDataFile(String),
+
+    #[error("key is empty")]
+    EmptyKey,
 }
 
 pub type Result<T> = result::Result<T, Errors>;
