@@ -21,6 +21,15 @@ pub enum Errors {
 
     #[error("key is empty")]
     EmptyKey,
+
+    #[error("update memory index failed")]
+    FailToUpdateIndex,
+
+    #[error("no such key found")]
+    KeyNotFound,
+
+    #[error("datafile in index does not exist")]
+    DataFileNotFound,
 }
 
 pub type Result<T> = result::Result<T, Errors>;

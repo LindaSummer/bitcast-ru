@@ -1,6 +1,7 @@
 use crate::data::log_record::LogRecordPos;
 
 /// Indexr an interface for index implementation
+/// it must be concurrent safe
 pub trait Indexer: Sync + Send {
     /// add a new entry
     fn put(&self, key: Vec<u8>, pos: LogRecordPos) -> bool;
