@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::{ops::Deref, sync::Arc};
+use std::sync::Arc;
 
 use parking_lot::RwLock;
 
@@ -8,6 +8,10 @@ use crate::fio;
 use crate::error::Result;
 
 use super::log_record::LogRecord;
+
+pub const DATAFILE_SEPARATOR: &str = ".";
+
+pub const DATAFILE_NAME_SUFFIX: &str = ".bcdata";
 
 /// datafile for each bitcast file
 pub(crate) struct DataFile {
@@ -25,11 +29,11 @@ impl DataFile {
     }
 
     pub fn write_offset(&self) -> u64 {
-        self.write_offset.read().deref().clone()
+        *self.write_offset.read()
     }
 
     pub fn file_id(&self) -> u32 {
-        self.file_id.read().deref().clone()
+        *self.file_id.read()
     }
 
     pub fn sync(&mut self) -> Result<()> {

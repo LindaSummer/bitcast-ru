@@ -30,6 +30,21 @@ pub enum Errors {
 
     #[error("datafile in index does not exist")]
     DataFileNotFound,
+
+    #[error("database directory is empty")]
+    InvalidDatabasePath,
+
+    #[error("datafile size must greater than zero")]
+    DatafileSizeTooSmall,
+
+    #[error("create database directory failed")]
+    FailToCreateDatabaseDirectory,
+
+    #[error("read database directory failed")]
+    FailToReadDatabaseDirectory,
+
+    #[error("database directory may be corrupted")]
+    DatabaseFileCorrupted,
 }
 
 pub type Result<T> = result::Result<T, Errors>;
