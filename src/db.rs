@@ -20,12 +20,16 @@ use crate::{
     options::Options,
 };
 
+const INITAIL_FILE_ID: u32 = 0;
+
 pub struct Engine {
-    options: Options,
+    options: Arc<Options>,
 
     active_file: Arc<RwLock<DataFile>>, // current active file
     old_files: Arc<RwLock<HashMap<u32, DataFile>>>, // old files
     indexer: Box<dyn index::Indexer>,   // memory index manager
+
+    file_ids: Vec<u32>, // file id list
 }
 
 impl Engine {
@@ -40,13 +44,14 @@ impl Engine {
             })?;
         }
 
-        let data_files = load_datafiles(&dir_path.to_path_buf())?;
+        let mut data_files = load_datafiles(&dir_path.to_path_buf())?;
         let fids = data_files.iter().map(|f| f.file_id());
-        let (first_file, old_files) = data_files.split_at(1);
+        let old_files = data_files.split_off(1);
         let old_files = old_files
             .into_iter()
-            .map(|f| (f.file_id(), f.clone()))
+            .map(|f| (f.file_id(), f))
             .collect::<BTreeMap<_, _>>();
+        let active_file = data_files.pop().ok_or(Errors::DataFileNotFound)?;
 
         todo!()
     }
@@ -140,6 +145,23 @@ impl Engine {
             offset,
         })
     }
+
+    fn load_index_from_data_files(&mut self) -> Result<()> {
+        let active_file = self.active_file.read();
+        let old_files = self.old_files.read();
+
+        for fid in self.file_ids.iter() {
+            let offset: u64 = 0;
+            if *fid == active_file.file_id() {
+                todo!("read from active file")
+            } else {
+                todo!("read from old files")
+                // let file = old_files.get(fid).ok_or(Errors::FailToFindDataFile)?
+            }
+        }
+
+        todo!()
+    }
 }
 
 fn check_options(option: &Options) -> Result<()> {
@@ -200,7 +222,7 @@ fn load_datafiles(directory_path: &Path) -> Result<Vec<DataFile>> {
 
     if data_files.is_empty() {
         info!("no datafile in directory, create a new one");
-        let df = DataFile::new(directory_path.to_path_buf(), 0)?;
+        let df = DataFile::new(directory_path.to_path_buf(), INITAIL_FILE_ID)?;
         data_files.push(df);
     }
 
