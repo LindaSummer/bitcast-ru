@@ -7,7 +7,7 @@ use crate::fio;
 
 use crate::error::Result;
 
-use super::log_record::LogRecord;
+use super::log_record::ReadLogRecord;
 
 pub const DATAFILE_SEPARATOR: &str = ".";
 
@@ -28,7 +28,7 @@ impl DataFile {
         todo!()
     }
 
-    pub fn write_offset(&self) -> u64 {
+    pub fn get_offset(&self) -> u64 {
         *self.write_offset.read()
     }
 
@@ -44,7 +44,11 @@ impl DataFile {
         todo!()
     }
 
-    pub fn read(&self, offset: u64) -> Result<LogRecord> {
+    pub fn read_log_record(&self, offset: u64) -> Result<ReadLogRecord> {
         todo!()
+    }
+
+    pub(crate) fn set_offset(&mut self, offset: u64) {
+        *self.write_offset.write() = offset
     }
 }

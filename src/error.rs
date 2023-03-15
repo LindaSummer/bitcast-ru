@@ -45,6 +45,9 @@ pub enum Errors {
 
     #[error("database directory may be corrupted")]
     DatabaseFileCorrupted,
+
+    #[error("read end of file")]
+    ReadEOF,
 }
 
 pub type Result<T> = result::Result<T, Errors>;

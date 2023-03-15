@@ -28,3 +28,8 @@ impl LogRecord {
         todo!()
     }
 }
+
+pub struct ReadLogRecord {
+    pub(crate) record: LogRecord,
+    pub(crate) size: u64,
+}
