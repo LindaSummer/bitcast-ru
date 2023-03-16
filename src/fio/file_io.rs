@@ -37,7 +37,7 @@ impl FileIO {
 }
 
 impl IOManager for FileIO {
-    fn read(&mut self, buf: &mut [u8], offset: u64) -> Result<usize> {
+    fn read(&self, buf: &mut [u8], offset: u64) -> Result<usize> {
         let read_guard = self.fd.read();
         read_guard.read_at(buf, offset).map_err(|e| {
             error!("read data file failed: {:?}", e);

@@ -1,4 +1,10 @@
-use std::{borrow::Borrow, collections::HashMap, fs, path::Path, sync::Arc};
+use std::{
+    borrow::{Borrow, BorrowMut},
+    collections::HashMap,
+    fs,
+    path::Path,
+    sync::Arc,
+};
 
 use bytes::Bytes;
 use log::{error, info, warn};
@@ -89,12 +95,12 @@ impl Engine {
             None => Err(Errors::KeyNotFound),
         }?;
 
-        let active_file = self.active_file.read();
+        let mut active_file = self.active_file.read();
         let old_files = self.old_files.read();
         let hint_file = match active_file.file_id() == record_pos.file_id {
             true => {
                 drop(old_files);
-                active_file.borrow()
+                active_file.borrow_mut()
             }
             false => {
                 drop(active_file);
@@ -133,7 +139,7 @@ impl Engine {
             //     DataFile::new(self.options.dir_path.clone(), active_file.file_id())?;
             let mut old_files = self.old_files.write();
             let mut tmp_active_file =
-                DataFile::new(self.options.dir_path.clone(), active_file.file_id() + 1)?;
+                DataFile::new(self.options.dir_path.borrow(), active_file.file_id() + 1)?;
             std::mem::swap(&mut *active_file, &mut tmp_active_file);
             old_files.insert(tmp_active_file.file_id(), tmp_active_file);
         }
@@ -278,14 +284,14 @@ fn load_datafiles(directory_path: &Path) -> Result<Vec<DataFile>> {
         file_ids.sort();
 
         for fid in file_ids.iter() {
-            let df = DataFile::new(directory_path.to_path_buf(), *fid)?;
+            let df = DataFile::new(&directory_path.to_path_buf(), *fid)?;
             data_files.push(df);
         }
     }
 
     if data_files.is_empty() {
         info!("no datafile in directory, create a new one");
-        let df = DataFile::new(directory_path.to_path_buf(), INITAIL_FILE_ID)?;
+        let df = DataFile::new(&directory_path.to_path_buf(), INITAIL_FILE_ID)?;
         data_files.push(df);
     }
 
