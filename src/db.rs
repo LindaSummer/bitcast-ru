@@ -178,24 +178,24 @@ impl Engine {
                         Err(e)
                     }
                 }?;
-                match log_record.record_type {
+                if !match log_record.record_type {
                     LogRecordType::NORAML => {
                         let key = log_record.key.to_vec();
-                        if !self.indexer.put(
+                        self.indexer.put(
                             key,
                             LogRecordPos {
                                 file_id: *fid,
                                 offset: offset,
                             },
-                        ) {
-                            error!("failed to update index");
-                            return Err(Errors::FailToReadDatabaseDirectory);
-                        }
+                        )
                     }
                     LogRecordType::DELETED => {
                         let key = log_record.key.to_vec();
-                        self.indexer.delete(key);
+                        self.indexer.delete(key)
                     }
+                } {
+                    error!("failed to update index");
+                    return Err(Errors::FailToReadDatabaseDirectory);
                 }
                 offset += size;
             }
@@ -206,6 +206,24 @@ impl Engine {
         }
 
         Ok(())
+    }
+
+    fn delete(&mut self, key: Bytes) -> Result<()> {
+        if key.is_empty() {
+            return Err(Errors::EmptyKey);
+        }
+
+        match self.indexer.get(key.to_vec()) {
+            Some(_) => {
+                let record = LogRecord {
+                    key: key.to_vec(),
+                    value: Default::default(),
+                    record_type: LogRecordType::DELETED,
+                };
+                self.append_log_record(&record).map(|_| ())
+            }
+            None => Ok(()),
+        }
     }
 }
 
