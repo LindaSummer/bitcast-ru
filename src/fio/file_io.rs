@@ -20,7 +20,6 @@ pub struct FileIO {
 impl FileIO {
     pub fn new(file_path: &PathBuf) -> Result<Self> {
         OpenOptions::new()
-            .create_new(true)
             .create(true)
             .read(true)
             .write(true)
