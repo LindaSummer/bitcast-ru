@@ -103,6 +103,7 @@ fn generate_datafile_name(path: &PathBuf, fid: u32) -> String {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use tempfile::Builder;
 
@@ -112,15 +113,19 @@ mod tests {
 
         let datafile_0 = DataFile::new(&tmp_dir.path().to_path_buf(), 0);
         assert!(datafile_0.is_ok());
+        assert_eq!(datafile_0.unwrap().file_id(), 0);
 
         let datafile_1 = DataFile::new(&tmp_dir.path().to_path_buf(), 1);
         assert!(datafile_1.is_ok());
+        assert_eq!(datafile_1.unwrap().file_id(), 1);
 
         let datafile_2 = DataFile::new(&tmp_dir.path().to_path_buf(), 0);
         assert!(datafile_2.is_ok());
+        assert_eq!(datafile_2.unwrap().file_id(), 0);
 
         let datafile_3 = DataFile::new(&tmp_dir.path().to_path_buf(), 1);
         assert!(datafile_3.is_ok());
+        assert_eq!(datafile_3.unwrap().file_id(), 1);
     }
 
     #[test]
@@ -162,4 +167,47 @@ mod tests {
 
     #[test]
     fn test_read_record() {}
+
+    #[test]
+    fn test_file_sync() {
+        let tmp_dir = Builder::new().prefix("bitcast-rs").tempdir().unwrap();
+
+        let datafile_0 = DataFile::new(&tmp_dir.path().to_path_buf(), 0);
+        assert!(datafile_0.is_ok());
+
+        let datafile_1 = DataFile::new(&tmp_dir.path().to_path_buf(), 1);
+        assert!(datafile_1.is_ok());
+
+        let datafile_2 = DataFile::new(&tmp_dir.path().to_path_buf(), 0);
+        assert!(datafile_2.is_ok());
+
+        let datafile_3 = DataFile::new(&tmp_dir.path().to_path_buf(), 1);
+        assert!(datafile_3.is_ok());
+
+        let mut datafile_0 = datafile_0.unwrap();
+        let mut datafile_1 = datafile_1.unwrap();
+        let mut datafile_2 = datafile_2.unwrap();
+        let mut datafile_3 = datafile_3.unwrap();
+        assert!(datafile_0.write("some string".as_bytes()).is_ok());
+        assert!(datafile_0.write("\0".as_bytes()).is_ok());
+        assert!(datafile_0.write(&Vec::<u8>::new()).is_ok());
+
+        assert!(datafile_1.write("some string".as_bytes()).is_ok());
+        assert!(datafile_1.write("\0".as_bytes()).is_ok());
+        assert!(datafile_1.write(&Vec::<u8>::new()).is_ok());
+
+        assert!(datafile_2.write("some string".as_bytes()).is_ok());
+        assert!(datafile_2.write("\0".as_bytes()).is_ok());
+        assert!(datafile_2.write(&Vec::<u8>::new()).is_ok());
+
+        assert!(datafile_3.write("some string".as_bytes()).is_ok());
+        assert!(datafile_3.write("\0".as_bytes()).is_ok());
+        assert!(datafile_3.write(&Vec::<u8>::new()).is_ok());
+
+        assert!(datafile_0.sync().is_ok());
+        assert!(datafile_0.sync().is_ok());
+        assert!(datafile_1.sync().is_ok());
+        assert!(datafile_2.sync().is_ok());
+        assert!(datafile_3.sync().is_ok());
+    }
 }
