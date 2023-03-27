@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bytes::{Buf, BytesMut};
@@ -29,12 +29,12 @@ pub(crate) struct DataFile {
 }
 
 impl DataFile {
-    pub fn new(file_dir: &PathBuf, fid: u32) -> Result<Self> {
-        let io_manager = new_io_manager(PathBuf::from(generate_datafile_name(&file_dir, fid)))?;
+    pub fn new(file_dir: &Path, fid: u32) -> Result<Self> {
+        let io_manager = new_io_manager(PathBuf::from(generate_datafile_name(file_dir, fid)))?;
         Ok(DataFile {
             file_id: Arc::new(RwLock::new(fid)),
             write_offset: Arc::new(RwLock::new(0)),
-            io_manager: io_manager,
+            io_manager,
         })
     }
 
@@ -81,14 +81,35 @@ impl DataFile {
         self.io_manager
             .read(&mut kv_buffer, offset + actual_header_size as u64)?;
 
-        Ok(ReadLogRecord {
+        let record = ReadLogRecord {
             record: LogRecord {
                 key: kv_buffer.get(..key_size).unwrap().to_vec(),
-                value: kv_buffer.get(key_size..kv_buffer.len()).unwrap().to_vec(),
+                value: kv_buffer
+                    .get(key_size..(key_size + value_size))
+                    .unwrap()
+                    .to_vec(),
                 record_type: LogRecordType::from_u8(record_type),
             },
-            size: (actual_header_size + key_size + value_size) as u64,
-        })
+            size: (actual_header_size + key_size + value_size + LOG_CRC_SIZE) as u64,
+        };
+        let crc = kv_buffer
+            .get((key_size + value_size)..kv_buffer.len())
+            .ok_or_else(|| {
+                error!("can't read record crc, maybe datafile is corrupted");
+                Errors::DatabaseFileCorrupted
+            })?;
+
+        let expect_crc = u32::from_le_bytes(crc.try_into().unwrap());
+        let actual_crc = record.record.get_crc();
+        if expect_crc != actual_crc {
+            error!(
+                "expect crc: {:?}, got: {:?}, database file may be corrupted",
+                expect_crc, actual_crc
+            );
+            Err(Errors::DatabaseFileCorrupted)
+        } else {
+            Ok(record)
+        }
     }
 
     pub(crate) fn set_offset(&mut self, offset: u64) {
@@ -96,7 +117,7 @@ impl DataFile {
     }
 }
 
-fn generate_datafile_name(path: &PathBuf, fid: u32) -> String {
+fn generate_datafile_name(path: &Path, fid: u32) -> String {
     let file_name = std::format!("{:09}{}", fid, DATAFILE_NAME_SUFFIX);
     String::from(path.join(file_name).to_str().unwrap())
 }
@@ -166,7 +187,82 @@ mod tests {
     }
 
     #[test]
-    fn test_read_record() {}
+    fn test_data_file_read_record() {
+        let tmp_dir = Builder::new().prefix("bitcast-rs").tempdir().unwrap();
+        let mut offset = 0;
+
+        let datafile = DataFile::new(&tmp_dir.path().to_path_buf(), 0);
+        assert!(datafile.is_ok());
+
+        let mut datafile = datafile.unwrap();
+
+        let rec1 = LogRecord {
+            key: "\0".as_bytes().to_vec(),
+            value: Default::default(),
+            record_type: LogRecordType::NORAML,
+        };
+        let (data, crc1) = (rec1.encode(), rec1.get_crc());
+        let size = datafile.write(&data);
+        assert!(size.is_ok());
+        let pos1 = offset;
+        offset += size.unwrap() as u64;
+
+        let read_rec = datafile.read_log_record(pos1);
+        assert!(read_rec.is_ok());
+        let read_rec = read_rec.unwrap();
+        assert_eq!(rec1, read_rec.record);
+        assert_eq!(crc1, read_rec.record.get_crc());
+
+        let rec2 = LogRecord {
+            key: "\0sdaas".as_bytes().to_vec(),
+            value: "dasdsadsadea\0dsada\0".as_bytes().to_vec(),
+            record_type: LogRecordType::NORAML,
+        };
+        let (data, crc2) = (rec2.encode(), rec2.get_crc());
+        let size = datafile.write(&data);
+        assert!(size.is_ok());
+        let pos2 = offset;
+        offset += size.unwrap() as u64;
+
+        let read_rec = datafile.read_log_record(pos2);
+        let read_rec = read_rec.unwrap();
+        assert_eq!(rec2, read_rec.record);
+        assert_eq!(crc2, read_rec.record.get_crc());
+
+        let read_rec = datafile.read_log_record(pos1);
+        assert!(read_rec.is_ok());
+        let read_rec = read_rec.unwrap();
+        assert_eq!(rec1, read_rec.record);
+        assert_eq!(crc1, read_rec.record.get_crc());
+
+        let rec3 = LogRecord {
+            key: "ssdda\0sdaas".as_bytes().to_vec(),
+            value: Default::default(),
+            record_type: LogRecordType::DELETED,
+        };
+        let (data, crc3) = (rec3.encode(), rec3.get_crc());
+        let size = datafile.write(&data);
+        assert!(size.is_ok());
+        let pos3 = offset;
+        // offset += size.unwrap() as u64;
+
+        let read_rec = datafile.read_log_record(pos2);
+        let read_rec = read_rec.unwrap();
+        assert_eq!(rec2, read_rec.record);
+        assert_eq!(crc2, read_rec.record.get_crc());
+
+        let read_rec = datafile.read_log_record(pos1);
+        assert!(read_rec.is_ok());
+        let read_rec = read_rec.unwrap();
+        assert_eq!(rec1, read_rec.record);
+        assert_eq!(crc1, read_rec.record.get_crc());
+
+        let read_rec = datafile.read_log_record(pos3);
+        assert!(read_rec.is_ok());
+        let read_rec = read_rec.unwrap();
+        assert_eq!(rec3, read_rec.record);
+        assert_eq!(crc3, read_rec.record.get_crc());
+    }
 
     #[test]
     fn test_file_sync() {

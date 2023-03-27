@@ -44,7 +44,7 @@ impl Engine {
             })?;
         }
 
-        let mut data_files = load_datafiles(&dir_path.to_path_buf())?;
+        let mut data_files = load_datafiles(&dir_path)?;
         let fids = data_files.iter().map(|f| f.file_id()).collect();
         let active_file = data_files.pop().ok_or(Errors::DataFileNotFound)?;
         let old_files = data_files
@@ -57,7 +57,7 @@ impl Engine {
         let mut engine = Engine {
             options: Arc::new(opt),
             active_file: Arc::new(RwLock::new(active_file)),
-            indexer: indexer,
+            indexer,
             old_files: Arc::new(RwLock::new(old_files)),
             file_ids: fids,
         };
@@ -191,7 +191,7 @@ impl Engine {
                             key,
                             LogRecordPos {
                                 file_id: *fid,
-                                offset: offset,
+                                offset,
                             },
                         )
                     }
@@ -214,7 +214,7 @@ impl Engine {
         Ok(())
     }
 
-    fn delete(&mut self, key: Bytes) -> Result<()> {
+    pub fn delete(&mut self, key: Bytes) -> Result<()> {
         if key.is_empty() {
             return Err(Errors::EmptyKey);
         }
@@ -226,7 +226,14 @@ impl Engine {
                     value: Default::default(),
                     record_type: LogRecordType::DELETED,
                 };
-                self.append_log_record(&record).map(|_| ())
+                self.append_log_record(&record).map(|_| ())?;
+                match self.indexer.delete(key.to_vec()) {
+                    true => Ok(()),
+                    false => {
+                        warn!("delete key in indexer failed: {:?}", key);
+                        Err(Errors::FailToUpdateIndex)
+                    }
+                }
             }
             None => Ok(()),
         }
