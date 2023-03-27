@@ -56,9 +56,9 @@ impl LogRecord {
         buf.put_u8(self.record_type as u8);
 
         // key size
-        let _ = encode_length_delimiter(self.key.len(), &mut buf).unwrap();
+        let _: Result<(), _> = encode_length_delimiter(self.key.len(), &mut buf);
         // value size
-        let _ = encode_length_delimiter(self.value.len(), &mut buf).unwrap();
+        let _: Result<(), _> = encode_length_delimiter(self.value.len(), &mut buf);
 
         // key
         buf.extend_from_slice(&self.key);

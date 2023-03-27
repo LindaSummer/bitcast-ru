@@ -291,14 +291,14 @@ fn load_datafiles(directory_path: &Path) -> Result<Vec<DataFile>> {
         file_ids.sort();
 
         for fid in file_ids.iter() {
-            let df = DataFile::new(&directory_path.to_path_buf(), *fid)?;
+            let df = DataFile::new(directory_path, *fid)?;
             data_files.push(df);
         }
     }
 
     if data_files.is_empty() {
         info!("no datafile in directory, create a new one");
-        let df = DataFile::new(&directory_path.to_path_buf(), INITAIL_FILE_ID)?;
+        let df = DataFile::new(directory_path, INITAIL_FILE_ID)?;
         data_files.push(df);
     }
 
