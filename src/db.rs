@@ -66,7 +66,7 @@ impl Engine {
         Ok(engine)
     }
 
-    pub fn put(&mut self, key: Bytes, value: Bytes) -> Result<()> {
+    pub fn put(&self, key: Bytes, value: Bytes) -> Result<()> {
         if key.is_empty() {
             return Err(Errors::EmptyKey);
         }
@@ -130,7 +130,7 @@ impl Engine {
     /// # Errors
     ///
     /// This function will return an error if active file sync, create or write failure.
-    fn append_log_record(&mut self, record: &LogRecord) -> Result<LogRecordPos> {
+    fn append_log_record(&self, record: &LogRecord) -> Result<LogRecordPos> {
         let encode_log = record.encode();
         let mut active_file = self.active_file.write();
         if active_file.get_offset() + encode_log.len() as u64 > self.options.datafile_size {
@@ -214,7 +214,7 @@ impl Engine {
         Ok(())
     }
 
-    pub fn delete(&mut self, key: Bytes) -> Result<()> {
+    pub fn delete(&self, key: Bytes) -> Result<()> {
         if key.is_empty() {
             return Err(Errors::EmptyKey);
         }

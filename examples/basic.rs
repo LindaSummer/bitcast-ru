@@ -1,7 +1,7 @@
 use bitcask_rs::db;
 
 fn main() {
-    let mut engine = db::Engine::open(Default::default()).expect("failed to open bitcast database");
+    let engine = db::Engine::open(Default::default()).expect("failed to open bitcast database");
 
     engine
         .put("key1".into(), "value1".into())
