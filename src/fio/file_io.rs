@@ -52,7 +52,7 @@ impl IOManager for FileIO {
         })
     }
 
-    fn sync(&mut self) -> Result<()> {
+    fn sync(&self) -> Result<()> {
         let read_guard = self.fd.read();
         read_guard.sync_all().map_err(|e| {
             error!("sync data file failed: {:?}", e);

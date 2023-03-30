@@ -32,6 +32,12 @@ pub struct Engine {
     file_ids: Vec<u32>, // file id list, only use in database initialize
 }
 
+impl Drop for Engine {
+    fn drop(&mut self) {
+        let _: Result<_> = self.close();
+    }
+}
+
 impl Engine {
     pub fn open(opt: Options) -> Result<Self> {
         check_options(&opt)?;
@@ -237,6 +243,17 @@ impl Engine {
             }
             None => Ok(()),
         }
+    }
+
+    pub fn close(&self) -> Result<()> {
+        self.active_file.write().sync()
+
+        // let old_files = self.old_files.write();
+        // for (_, file) in old_files.iter() {
+        //     file.sync()?;
+        // }
+
+        // Ok(())
     }
 }
 

@@ -46,7 +46,7 @@ impl DataFile {
         *self.file_id.read()
     }
 
-    pub fn sync(&mut self) -> Result<()> {
+    pub fn sync(&self) -> Result<()> {
         self.io_manager.sync()
     }
 
