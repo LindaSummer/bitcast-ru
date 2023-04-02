@@ -2,9 +2,9 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use parking_lot::RwLock;
 
-use crate::data::log_record::LogRecordPos;
+use crate::{data::log_record::LogRecordPos, options::IndexIteratorOptions};
 
-use super::indexer::Indexer;
+use super::indexer::{IndexIterator, Indexer};
 
 pub struct BTreeIndexer {
     tree: Arc<RwLock<BTreeMap<Vec<u8>, LogRecordPos>>>,
@@ -39,6 +39,26 @@ impl Indexer for BTreeIndexer {
     fn delete(&self, key: Vec<u8>) -> bool {
         let mut write_guard = self.tree.write();
         write_guard.remove(&key).is_some()
+    }
+}
+
+struct BtreeIndexIterator {
+    items: Vec<(Vec<u8>, LogRecordPos)>,
+    pos: usize,
+    options: IndexIteratorOptions,
+}
+
+impl IndexIterator for BtreeIndexIterator {
+    fn rewind(&mut self) {
+        self.pos = 0;
+    }
+
+    fn seek(&mut self, key: Vec<u8>) {
+        todo!()
+    }
+
+    fn next(&mut self) -> Option<(&Vec<u8>, &LogRecordPos)> {
+        todo!()
     }
 }
 

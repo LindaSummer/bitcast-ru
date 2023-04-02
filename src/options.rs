@@ -31,3 +31,17 @@ pub enum IndexType {
     // SkipList
     SkipList,
 }
+
+pub struct IndexIteratorOptions {
+    pub prefix: Vec<u8>,
+    pub reverse: bool,
+}
+
+impl Default for IndexIteratorOptions {
+    fn default() -> Self {
+        Self {
+            prefix: Default::default(),
+            reverse: false,
+        }
+    }
+}
