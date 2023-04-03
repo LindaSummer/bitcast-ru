@@ -53,12 +53,32 @@ impl IndexIterator for BtreeIndexIterator {
         self.pos = 0;
     }
 
-    fn seek(&mut self, key: Vec<u8>) {
-        todo!()
+    fn seek(&mut self, key: &[u8]) {
+        self.pos = match self.items.binary_search_by(|(x, _)| {
+            let order = x.cmp(&key.into());
+            if self.options.reverse {
+                order.reverse()
+            } else {
+                order
+            }
+        }) {
+            Ok(pos) => pos,
+            Err(pos) => pos,
+        }
     }
 
     fn next(&mut self) -> Option<(&Vec<u8>, &LogRecordPos)> {
-        todo!()
+        if self.pos >= self.items.len() {
+            return None;
+        }
+        while let Some(item) = self.items.get(self.pos) {
+            if item.0.starts_with(&self.options.prefix) {
+                return Some((&item.0, &item.1));
+            }
+            self.pos += 1;
+        }
+
+        None
     }
 }
 
