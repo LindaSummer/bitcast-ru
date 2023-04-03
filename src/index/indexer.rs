@@ -23,7 +23,7 @@ pub(crate) fn new_indexer(idx_typ: IndexType) -> impl Indexer {
 pub trait IndexIterator: Sync + Send {
     fn rewind(&mut self);
 
-    fn seek(&mut self, key: Vec<u8>);
+    fn seek(&mut self, key: &[u8]);
 
     fn next(&mut self) -> Option<(&Vec<u8>, &LogRecordPos)>;
 }
