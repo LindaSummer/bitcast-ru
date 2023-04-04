@@ -27,7 +27,7 @@ pub struct Engine {
 
     active_file: Arc<RwLock<DataFile>>, // current active file
     old_files: Arc<RwLock<HashMap<u32, DataFile>>>, // old files
-    indexer: Box<dyn index::Indexer>,   // memory index manager
+    pub(crate) indexer: Box<dyn index::Indexer>, // memory index manager
 
     file_ids: Vec<u32>, // file id list, only use in database initialize
 }
@@ -101,9 +101,13 @@ impl Engine {
             None => Err(Errors::KeyNotFound),
         }?;
 
+        self.get_by_position(&record_pos)
+    }
+
+    pub(crate) fn get_by_position(&self, pos: &LogRecordPos) -> Result<Bytes> {
         let mut active_file = self.active_file.read();
         let old_files = self.old_files.read();
-        let hint_file = match active_file.file_id() == record_pos.file_id {
+        let hint_file = match active_file.file_id() == pos.file_id {
             true => {
                 drop(old_files);
                 active_file.borrow_mut()
@@ -111,12 +115,12 @@ impl Engine {
             false => {
                 drop(active_file);
                 old_files
-                    .get(record_pos.file_id.borrow())
+                    .get(pos.file_id.borrow())
                     .ok_or(Errors::DataFileNotFound)?
             }
         };
 
-        let record = hint_file.read_log_record(record_pos.offset)?;
+        let record = hint_file.read_log_record(pos.offset)?;
         if record.record.record_type == LogRecordType::DELETED {
             Err(Errors::KeyNotFound)
         } else {
