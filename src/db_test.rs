@@ -194,3 +194,84 @@ fn test_engine_delete() {
     assert_eq!(engine.get(get_test_key(101)), Err(Errors::KeyNotFound));
     assert_eq!(engine.get(get_test_key(102)), Err(Errors::KeyNotFound));
 }
+
+#[test]
+fn test_list_keys_add_and_delete() {
+    let mut opts = Options::default();
+    opts.dir_path = Builder::new()
+        .prefix("bitcast-rs")
+        .tempdir()
+        .unwrap()
+        .path()
+        .to_path_buf();
+    opts.datafile_size = 64 * 1024 * 1024;
+
+    let engine = Engine::open(opts.clone()).expect("failed to open engine");
+
+    assert_eq!(engine.list_keys(), Vec::<Bytes>::default());
+
+    assert_eq!(engine.put("key0".into(), "value0".into()), Ok(()));
+    assert_eq!(engine.list_keys(), vec![Bytes::from("key0")]);
+
+    assert_eq!(engine.put("key1".into(), "value1".into()), Ok(()));
+    assert_eq!(
+        engine.list_keys(),
+        vec![Bytes::from("key0"), Bytes::from("key1")]
+    );
+
+    assert_eq!(engine.put("key2".into(), "value2".into()), Ok(()));
+    assert_eq!(
+        engine.list_keys(),
+        vec![
+            Bytes::from("key0"),
+            Bytes::from("key1"),
+            Bytes::from("key2")
+        ]
+    );
+
+    assert_eq!(engine.delete("key1".into()), Ok(()));
+    assert_eq!(
+        engine.list_keys(),
+        vec![Bytes::from("key0"), Bytes::from("key2")]
+    );
+}
+
+#[test]
+fn test_list_keys_large_size() {
+    let mut opts = Options::default();
+    opts.dir_path = Builder::new()
+        .prefix("bitcast-rs")
+        .tempdir()
+        .unwrap()
+        .path()
+        .to_path_buf();
+    opts.datafile_size = 64 * 1024 * 1024;
+
+    let engine = Engine::open(opts.clone()).expect("failed to open engine");
+
+    assert_eq!(engine.list_keys(), Vec::<Bytes>::default());
+
+    const SIZE: usize = 1000000;
+
+    for i in 0..=SIZE {
+        assert!(engine.put(get_test_key(i), get_test_value(i)).is_ok());
+    }
+
+    assert_eq!(
+        engine.list_keys(),
+        (0..SIZE + 1)
+            .map(|x| { get_test_key(x) })
+            .collect::<Vec<_>>()
+    );
+
+    for i in 0..=SIZE - 10 {
+        assert!(engine.delete(get_test_key(i)).is_ok());
+    }
+
+    assert_eq!(
+        engine.list_keys(),
+        (SIZE - 10 + 1..SIZE + 1)
+            .map(|x| { get_test_key(x) })
+            .collect::<Vec<_>>()
+    );
+}

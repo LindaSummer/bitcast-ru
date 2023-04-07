@@ -259,6 +259,24 @@ impl Engine {
 
         // Ok(())
     }
+
+    pub fn list_keys(&self) -> Vec<Bytes> {
+        self.indexer.list_keys()
+    }
+
+    pub fn fold<F>(&self, f: F) -> Result<()>
+    where
+        Self: Sized,
+        F: Fn(Bytes, Bytes) -> bool,
+    {
+        let iterator = self.iterator(Default::default());
+        while let Ok(Some((key, value))) = iterator.next() {
+            if !f(key, value) {
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
 }
 
 fn check_options(option: &Options) -> Result<()> {
