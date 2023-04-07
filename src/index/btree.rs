@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
+use bytes::Bytes;
 use parking_lot::RwLock;
 
 use crate::{data::log_record::LogRecordPos, options::IndexIteratorOptions};
@@ -57,6 +58,14 @@ impl Indexer for BTreeIndexer {
             pos: 0,
             options,
         })
+    }
+
+    fn list_keys(&self) -> Vec<Bytes> {
+        self.tree
+            .read()
+            .keys()
+            .map(|k| Bytes::copy_from_slice(k.as_slice()))
+            .collect()
     }
 }
 
@@ -686,5 +695,47 @@ mod tests {
 
         iterator.seek("prefix_some_kex".as_bytes());
         assert_eq!(iterator.next(), None);
+    }
+
+    #[test]
+    fn test_list_keys() {
+        let indexer = BTreeIndexer::new();
+        assert_eq!(indexer.list_keys(), Vec::<Bytes>::default());
+
+        assert!(indexer.put(
+            "key1".into(),
+            LogRecordPos {
+                file_id: 121,
+                offset: 121
+            }
+        ));
+        assert_eq!(indexer.list_keys(), vec![Bytes::from("key1")]);
+
+        assert!(indexer.put(
+            "key2".into(),
+            LogRecordPos {
+                file_id: 122,
+                offset: 122
+            }
+        ));
+        assert_eq!(
+            indexer.list_keys(),
+            vec![Bytes::from("key1"), Bytes::from("key2")]
+        );
+
+        assert!(indexer.put(
+            "key1".into(),
+            LogRecordPos {
+                file_id: 123,
+                offset: 123
+            }
+        ));
+        assert_eq!(
+            indexer.list_keys(),
+            vec![Bytes::from("key1"), Bytes::from("key2")]
+        );
+
+        assert!(indexer.delete("key1".into()));
+        assert_eq!(indexer.list_keys(), vec![Bytes::from("key2")]);
     }
 }

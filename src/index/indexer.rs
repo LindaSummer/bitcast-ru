@@ -1,3 +1,5 @@
+use bytes::Bytes;
+
 use crate::{
     data::log_record::LogRecordPos,
     options::{IndexIteratorOptions, IndexType},
@@ -16,6 +18,8 @@ pub trait Indexer: Sync + Send {
     fn get(&self, key: Vec<u8>) -> Option<LogRecordPos>;
     /// get iterator for index
     fn iterator(&self, options: IndexIteratorOptions) -> Box<dyn IndexIterator>;
+    /// return keys of all entries
+    fn list_keys(&self) -> Vec<Bytes>;
 }
 
 pub(crate) fn new_indexer(idx_typ: IndexType) -> impl Indexer {

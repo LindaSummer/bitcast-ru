@@ -24,7 +24,7 @@ impl<'a> Iterator<'a> {
         self.index_iterator.write().rewind();
     }
 
-    pub fn seek(&mut self, key: Bytes) {
+    pub fn seek(&self, key: Bytes) {
         self.index_iterator.write().seek(key.as_ref())
     }
 
@@ -52,23 +52,247 @@ impl Engine {
 mod tests {
     // use super::*;S
 
-    #[test]
-    fn test_iterator_new() {
-        // todo!()
-    }
+    use tempfile::Builder;
+
+    use crate::{
+        db::Engine,
+        options::{IndexIteratorOptions, Options},
+    };
 
     #[test]
     fn test_iterator_rewind() {
-        // todo!()
+        let mut opts = Options::default();
+        opts.dir_path = Builder::new()
+            .prefix("bitcast-rs")
+            .tempdir()
+            .unwrap()
+            .path()
+            .to_path_buf();
+        opts.datafile_size = 64 * 1024 * 1024;
+
+        let engine = Engine::open(opts.clone()).expect("failed to open engine");
+
+        let iterator_options = IndexIteratorOptions::default();
+        let iterator = engine.iterator(iterator_options);
+        assert_eq!(iterator.next(), Ok(None));
+        iterator.rewind();
+        assert_eq!(iterator.next(), Ok(None));
+
+        assert_eq!(engine.put("key".into(), "value".into()), Ok(()));
+        let iterator_options = IndexIteratorOptions::default();
+        let iterator = engine.iterator(iterator_options);
+        assert_eq!(iterator.next(), Ok(Some(("key".into(), "value".into()))));
+        assert_eq!(iterator.next(), Ok(None));
+        iterator.rewind();
+        assert_eq!(iterator.next(), Ok(Some(("key".into(), "value".into()))));
+        assert_eq!(iterator.next(), Ok(None));
     }
 
     #[test]
-    fn test_iterator_seek() {
-        // todo!()
+    fn test_iterator_seek_next() {
+        let mut opts = Options::default();
+        opts.dir_path = Builder::new()
+            .prefix("bitcast-rs")
+            .tempdir()
+            .unwrap()
+            .path()
+            .to_path_buf();
+        opts.datafile_size = 64 * 1024 * 1024;
+
+        let engine = Engine::open(opts.clone()).expect("failed to open engine");
+
+        let iterator_options = IndexIteratorOptions::default();
+        let iterator = engine.iterator(iterator_options);
+        assert_eq!(iterator.next(), Ok(None));
+        iterator.rewind();
+        assert_eq!(iterator.next(), Ok(None));
+
+        assert_eq!(engine.put("key".into(), "value".into()), Ok(()));
+        assert_eq!(engine.put("key1".into(), "value1".into()), Ok(()));
+        let iterator_options = IndexIteratorOptions::default();
+        let iterator = engine.iterator(iterator_options);
+        assert_eq!(iterator.next(), Ok(Some(("key".into(), "value".into()))));
+        assert_eq!(iterator.next(), Ok(Some(("key1".into(), "value1".into()))));
+        assert_eq!(iterator.next(), Ok(None));
+        iterator.seek("kex".into());
+        assert_eq!(iterator.next(), Ok(Some(("key".into(), "value".into()))));
+        assert_eq!(iterator.next(), Ok(Some(("key1".into(), "value1".into()))));
+        assert_eq!(iterator.next(), Ok(None));
+        iterator.seek("key".into());
+        assert_eq!(iterator.next(), Ok(Some(("key".into(), "value".into()))));
+        assert_eq!(iterator.next(), Ok(Some(("key1".into(), "value1".into()))));
+        assert_eq!(iterator.next(), Ok(None));
+        iterator.seek("key1".into());
+        assert_eq!(iterator.next(), Ok(Some(("key1".into(), "value1".into()))));
+        assert_eq!(iterator.next(), Ok(None));
+        iterator.seek("key2".into());
+        assert_eq!(iterator.next(), Ok(None));
+
+        let iterator_options = IndexIteratorOptions {
+            prefix: Default::default(),
+            reverse: true,
+        };
+        let iterator = engine.iterator(iterator_options);
+        assert_eq!(iterator.next(), Ok(Some(("key1".into(), "value1".into()))));
+        assert_eq!(iterator.next(), Ok(Some(("key".into(), "value".into()))));
+        assert_eq!(iterator.next(), Ok(None));
+
+        iterator.rewind();
+        assert_eq!(iterator.next(), Ok(Some(("key1".into(), "value1".into()))));
+        assert_eq!(iterator.next(), Ok(Some(("key".into(), "value".into()))));
+        assert_eq!(iterator.next(), Ok(None));
+
+        iterator.seek("key2".into());
+        assert_eq!(iterator.next(), Ok(Some(("key1".into(), "value1".into()))));
+        assert_eq!(iterator.next(), Ok(Some(("key".into(), "value".into()))));
+        assert_eq!(iterator.next(), Ok(None));
+
+        iterator.seek("key1".into());
+        assert_eq!(iterator.next(), Ok(Some(("key1".into(), "value1".into()))));
+        assert_eq!(iterator.next(), Ok(Some(("key".into(), "value".into()))));
+        assert_eq!(iterator.next(), Ok(None));
+
+        iterator.seek("key0".into());
+        assert_eq!(iterator.next(), Ok(Some(("key".into(), "value".into()))));
+        assert_eq!(iterator.next(), Ok(None));
+
+        iterator.seek("key".into());
+        assert_eq!(iterator.next(), Ok(Some(("key".into(), "value".into()))));
+        assert_eq!(iterator.next(), Ok(None));
+
+        iterator.seek("kex".into());
+        assert_eq!(iterator.next(), Ok(None));
     }
 
     #[test]
-    fn test_iterator_next() {
-        // todo!()
+    fn test_iterator_seek_prefix_next() {
+        let mut opts = Options::default();
+        opts.dir_path = Builder::new()
+            .prefix("bitcast-rs")
+            .tempdir()
+            .unwrap()
+            .path()
+            .to_path_buf();
+        opts.datafile_size = 64 * 1024 * 1024;
+
+        let engine = Engine::open(opts.clone()).expect("failed to open engine");
+
+        let iterator_options = IndexIteratorOptions {
+            prefix: "prefix_".into(),
+            reverse: false,
+        };
+        let iterator = engine.iterator(iterator_options.clone());
+        assert_eq!(iterator.next(), Ok(None));
+        iterator.rewind();
+        assert_eq!(iterator.next(), Ok(None));
+
+        assert_eq!(engine.put("key".into(), "value".into()), Ok(()));
+        assert_eq!(engine.put("key1".into(), "value1".into()), Ok(()));
+        assert_eq!(engine.put("prefix_key".into(), "value".into()), Ok(()));
+        assert_eq!(engine.put("prefix_key1".into(), "value1".into()), Ok(()));
+
+        let iterator = engine.iterator(iterator_options.clone());
+        assert_eq!(
+            iterator.next(),
+            Ok(Some(("prefix_key".into(), "value".into())))
+        );
+        assert_eq!(
+            iterator.next(),
+            Ok(Some(("prefix_key1".into(), "value1".into())))
+        );
+        assert_eq!(iterator.next(), Ok(None));
+        iterator.seek("prefix_kex".into());
+        assert_eq!(
+            iterator.next(),
+            Ok(Some(("prefix_key".into(), "value".into())))
+        );
+        assert_eq!(
+            iterator.next(),
+            Ok(Some(("prefix_key1".into(), "value1".into())))
+        );
+        assert_eq!(iterator.next(), Ok(None));
+        iterator.seek("prefix_key".into());
+        assert_eq!(
+            iterator.next(),
+            Ok(Some(("prefix_key".into(), "value".into())))
+        );
+        assert_eq!(
+            iterator.next(),
+            Ok(Some(("prefix_key1".into(), "value1".into())))
+        );
+        assert_eq!(iterator.next(), Ok(None));
+        iterator.seek("prefix_key1".into());
+        assert_eq!(
+            iterator.next(),
+            Ok(Some(("prefix_key1".into(), "value1".into())))
+        );
+        assert_eq!(iterator.next(), Ok(None));
+        iterator.seek("prefix_key2".into());
+        assert_eq!(iterator.next(), Ok(None));
+
+        let iterator_options = IndexIteratorOptions {
+            prefix: "prefix_".into(),
+            reverse: true,
+        };
+        let iterator = engine.iterator(iterator_options);
+        assert_eq!(
+            iterator.next(),
+            Ok(Some(("prefix_key1".into(), "value1".into())))
+        );
+        assert_eq!(
+            iterator.next(),
+            Ok(Some(("prefix_key".into(), "value".into())))
+        );
+        assert_eq!(iterator.next(), Ok(None));
+
+        iterator.rewind();
+        assert_eq!(
+            iterator.next(),
+            Ok(Some(("prefix_key1".into(), "value1".into())))
+        );
+        assert_eq!(
+            iterator.next(),
+            Ok(Some(("prefix_key".into(), "value".into())))
+        );
+        assert_eq!(iterator.next(), Ok(None));
+
+        iterator.seek("prefix_key2".into());
+        assert_eq!(
+            iterator.next(),
+            Ok(Some(("prefix_key1".into(), "value1".into())))
+        );
+        assert_eq!(
+            iterator.next(),
+            Ok(Some(("prefix_key".into(), "value".into())))
+        );
+        assert_eq!(iterator.next(), Ok(None));
+
+        iterator.seek("prefix_key1".into());
+        assert_eq!(
+            iterator.next(),
+            Ok(Some(("prefix_key1".into(), "value1".into())))
+        );
+        assert_eq!(
+            iterator.next(),
+            Ok(Some(("prefix_key".into(), "value".into())))
+        );
+        assert_eq!(iterator.next(), Ok(None));
+
+        iterator.seek("prefix_key0".into());
+        assert_eq!(
+            iterator.next(),
+            Ok(Some(("prefix_key".into(), "value".into())))
+        );
+        assert_eq!(iterator.next(), Ok(None));
+
+        iterator.seek("prefix_key".into());
+        assert_eq!(
+            iterator.next(),
+            Ok(Some(("prefix_key".into(), "value".into())))
+        );
+        assert_eq!(iterator.next(), Ok(None));
+
+        iterator.seek("prefix_kex".into());
+        assert_eq!(iterator.next(), Ok(None));
     }
 }
