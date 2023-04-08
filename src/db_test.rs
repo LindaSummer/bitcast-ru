@@ -275,3 +275,115 @@ fn test_list_keys_large_size() {
             .collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn test_fold_keys() {
+    let mut opts = Options::default();
+    opts.dir_path = Builder::new()
+        .prefix("bitcast-rs")
+        .tempdir()
+        .unwrap()
+        .path()
+        .to_path_buf();
+    opts.datafile_size = 64 * 1024 * 1024;
+
+    let engine = Engine::open(opts.clone()).expect("failed to open engine");
+
+    assert_eq!(
+        engine.fold(|_, _| -> bool {
+            assert!(false);
+            true
+        }),
+        Ok(())
+    );
+
+    const SIZE: usize = 1000000;
+
+    for i in 0..=SIZE {
+        assert!(engine.put(get_test_key(i), get_test_value(i)).is_ok());
+    }
+
+    let mut key_vec = Vec::new();
+    let mut value_vec = Vec::new();
+    assert_eq!(
+        engine.fold(|key, value| -> bool {
+            key_vec.push(key);
+            value_vec.push(value);
+            false
+        }),
+        Ok(())
+    );
+
+    assert_eq!(key_vec, vec![get_test_key(0)]);
+    assert_eq!(value_vec, vec![get_test_value(0)]);
+
+    let mut key_id: usize = 0;
+    assert_eq!(
+        engine.fold(|key, value| -> bool {
+            assert_eq!(key, get_test_key(key_id));
+            assert_eq!(value, get_test_value(key_id));
+            key_id += 1;
+            true
+        }),
+        Ok(())
+    );
+
+    for i in 0..=SIZE - 10 {
+        assert!(engine.delete(get_test_key(i)).is_ok());
+    }
+
+    let mut key_id: usize = SIZE - 10 + 1;
+    assert_eq!(
+        engine.fold(|key, value| -> bool {
+            assert_eq!(key, get_test_key(key_id));
+            assert_eq!(value, get_test_value(key_id));
+            key_id += 1;
+            true
+        }),
+        Ok(())
+    );
+}
+
+#[test]
+fn test_close() {
+    let mut opts = Options::default();
+    opts.dir_path = Builder::new()
+        .prefix("bitcast-rs")
+        .tempdir()
+        .unwrap()
+        .path()
+        .to_path_buf();
+    opts.datafile_size = 64 * 1024 * 1024;
+
+    let engine = Engine::open(opts.clone()).expect("failed to open engine");
+
+    const SIZE: usize = 1000000;
+
+    for i in 0..=SIZE {
+        assert!(engine.put(get_test_key(i), get_test_value(i)).is_ok());
+    }
+
+    assert_eq!(engine.close(), Ok(()));
+}
+
+#[test]
+fn test_sync() {
+    let mut opts = Options::default();
+    opts.dir_path = Builder::new()
+        .prefix("bitcast-rs")
+        .tempdir()
+        .unwrap()
+        .path()
+        .to_path_buf();
+    opts.datafile_size = 64 * 1024 * 1024;
+
+    let engine = Engine::open(opts.clone()).expect("failed to open engine");
+
+    const SIZE: usize = 1000000;
+
+    for i in 0..=SIZE {
+        assert!(engine.put(get_test_key(i), get_test_value(i)).is_ok());
+    }
+
+    assert_eq!(engine.sync(), Ok(()));
+}
