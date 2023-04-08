@@ -250,24 +250,21 @@ impl Engine {
     }
 
     pub fn close(&self) -> Result<()> {
-        self.active_file.write().sync()
+        self.active_file.read().sync()
+    }
 
-        // let old_files = self.old_files.write();
-        // for (_, file) in old_files.iter() {
-        //     file.sync()?;
-        // }
-
-        // Ok(())
+    pub fn sync(&self) -> Result<()> {
+        self.active_file.read().sync()
     }
 
     pub fn list_keys(&self) -> Vec<Bytes> {
         self.indexer.list_keys()
     }
 
-    pub fn fold<F>(&self, f: F) -> Result<()>
+    pub fn fold<F>(&self, mut f: F) -> Result<()>
     where
         Self: Sized,
-        F: Fn(Bytes, Bytes) -> bool,
+        F: FnMut(Bytes, Bytes) -> bool,
     {
         let iterator = self.iterator(Default::default());
         while let Ok(Some((key, value))) = iterator.next() {
@@ -326,13 +323,13 @@ fn load_datafiles(directory_path: &Path) -> Result<Vec<DataFile>> {
             })?;
             file_ids.push(file_id);
         }
+    }
 
-        file_ids.sort();
+    file_ids.sort();
 
-        for fid in file_ids.iter() {
-            let df = DataFile::new(directory_path, *fid)?;
-            data_files.push(df);
-        }
+    for fid in file_ids.iter() {
+        let df = DataFile::new(directory_path, *fid)?;
+        data_files.push(df);
     }
 
     if data_files.is_empty() {
