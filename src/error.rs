@@ -28,6 +28,9 @@ pub enum Errors {
     #[error("no such key found")]
     KeyNotFound,
 
+    #[error("load index failed")]
+    LoadIndexFailed,
+
     #[error("datafile in index does not exist")]
     DataFileNotFound,
 

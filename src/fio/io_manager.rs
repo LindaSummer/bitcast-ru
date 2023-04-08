@@ -13,7 +13,7 @@ pub trait IOManager {
     fn write(&mut self, buf: &[u8]) -> Result<usize>;
 
     /// flush data to consistant file
-    fn sync(&mut self) -> Result<()>;
+    fn sync(&self) -> Result<()>;
 }
 
 pub(crate) fn new_io_manager(file_path: PathBuf) -> Result<Box<impl IOManager>> {

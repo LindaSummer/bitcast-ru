@@ -27,9 +27,15 @@ pub struct Engine {
 
     active_file: Arc<RwLock<DataFile>>, // current active file
     old_files: Arc<RwLock<HashMap<u32, DataFile>>>, // old files
-    indexer: Box<dyn index::Indexer>,   // memory index manager
+    pub(crate) indexer: Box<dyn index::Indexer>, // memory index manager
 
     file_ids: Vec<u32>, // file id list, only use in database initialize
+}
+
+impl Drop for Engine {
+    fn drop(&mut self) {
+        let _: Result<_> = self.close();
+    }
 }
 
 impl Engine {
@@ -95,9 +101,13 @@ impl Engine {
             None => Err(Errors::KeyNotFound),
         }?;
 
+        self.get_by_position(&record_pos)
+    }
+
+    pub(crate) fn get_by_position(&self, pos: &LogRecordPos) -> Result<Bytes> {
         let mut active_file = self.active_file.read();
         let old_files = self.old_files.read();
-        let hint_file = match active_file.file_id() == record_pos.file_id {
+        let hint_file = match active_file.file_id() == pos.file_id {
             true => {
                 drop(old_files);
                 active_file.borrow_mut()
@@ -105,12 +115,12 @@ impl Engine {
             false => {
                 drop(active_file);
                 old_files
-                    .get(record_pos.file_id.borrow())
+                    .get(pos.file_id.borrow())
                     .ok_or(Errors::DataFileNotFound)?
             }
         };
 
-        let record = hint_file.read_log_record(record_pos.offset)?;
+        let record = hint_file.read_log_record(pos.offset)?;
         if record.record.record_type == LogRecordType::DELETED {
             Err(Errors::KeyNotFound)
         } else {
@@ -238,6 +248,32 @@ impl Engine {
             None => Ok(()),
         }
     }
+
+    pub fn close(&self) -> Result<()> {
+        self.active_file.read().sync()
+    }
+
+    pub fn sync(&self) -> Result<()> {
+        self.active_file.read().sync()
+    }
+
+    pub fn list_keys(&self) -> Vec<Bytes> {
+        self.indexer.list_keys()
+    }
+
+    pub fn fold<F>(&self, mut f: F) -> Result<()>
+    where
+        Self: Sized,
+        F: FnMut(Bytes, Bytes) -> bool,
+    {
+        let iterator = self.iterator(Default::default());
+        while let Ok(Some((key, value))) = iterator.next() {
+            if !f(key, value) {
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
 }
 
 fn check_options(option: &Options) -> Result<()> {
@@ -287,13 +323,13 @@ fn load_datafiles(directory_path: &Path) -> Result<Vec<DataFile>> {
             })?;
             file_ids.push(file_id);
         }
+    }
 
-        file_ids.sort();
+    file_ids.sort();
 
-        for fid in file_ids.iter() {
-            let df = DataFile::new(directory_path, *fid)?;
-            data_files.push(df);
-        }
+    for fid in file_ids.iter() {
+        let df = DataFile::new(directory_path, *fid)?;
+        data_files.push(df);
     }
 
     if data_files.is_empty() {

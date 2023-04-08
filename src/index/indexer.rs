@@ -1,4 +1,9 @@
-use crate::{data::log_record::LogRecordPos, options::IndexType};
+use bytes::Bytes;
+
+use crate::{
+    data::log_record::LogRecordPos,
+    options::{IndexIteratorOptions, IndexType},
+};
 
 use super::btree::BTreeIndexer;
 
@@ -11,6 +16,10 @@ pub trait Indexer: Sync + Send {
     fn delete(&self, key: Vec<u8>) -> bool;
     /// get an entry's log position
     fn get(&self, key: Vec<u8>) -> Option<LogRecordPos>;
+    /// get iterator for index
+    fn iterator(&self, options: IndexIteratorOptions) -> Box<dyn IndexIterator>;
+    /// return keys of all entries
+    fn list_keys(&self) -> Vec<Bytes>;
 }
 
 pub(crate) fn new_indexer(idx_typ: IndexType) -> impl Indexer {
@@ -18,4 +27,12 @@ pub(crate) fn new_indexer(idx_typ: IndexType) -> impl Indexer {
         IndexType::BtreeMap => BTreeIndexer::new(),
         IndexType::SkipList => todo!(),
     }
+}
+
+pub trait IndexIterator: Sync + Send {
+    fn rewind(&mut self);
+
+    fn seek(&mut self, key: &[u8]);
+
+    fn next(&mut self) -> Option<(&Vec<u8>, &LogRecordPos)>;
 }
