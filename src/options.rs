@@ -31,3 +31,9 @@ pub enum IndexType {
     // SkipList
     SkipList,
 }
+
+#[derive(Default, Clone)]
+pub struct IndexIteratorOptions {
+    pub prefix: Vec<u8>,
+    pub reverse: bool,
+}
