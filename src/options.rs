@@ -37,3 +37,17 @@ pub struct IndexIteratorOptions {
     pub prefix: Vec<u8>,
     pub reverse: bool,
 }
+#[derive(Clone)]
+pub struct WriteBatchOptions {
+    pub sync_on_write: bool,
+    pub max_batch_size: u32,
+}
+
+impl Default for WriteBatchOptions {
+    fn default() -> Self {
+        Self {
+            sync_on_write: true,
+            max_batch_size: 10000,
+        }
+    }
+}
