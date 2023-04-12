@@ -51,6 +51,9 @@ pub enum Errors {
 
     #[error("read end of file")]
     ReadEOF,
+
+    #[error("exceed maximum allowed batch size")]
+    ExceedBatchMaxSize,
 }
 
 pub type Result<T> = result::Result<T, Errors>;

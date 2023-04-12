@@ -3,12 +3,12 @@ use std::{
     collections::HashMap,
     fs,
     path::Path,
-    sync::Arc,
+    sync::{atomic::AtomicUsize, Arc},
 };
 
 use bytes::Bytes;
 use log::{error, info, warn};
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 
 use crate::{
     data::{
@@ -30,6 +30,9 @@ pub struct Engine {
     pub(crate) indexer: Box<dyn index::Indexer>, // memory index manager
 
     file_ids: Vec<u32>, // file id list, only use in database initialize
+
+    pub(crate) batch_commit_lock: Mutex<()>, // batch commit global lock
+    pub(crate) batch_commit_id: Arc<AtomicUsize>, // latest batch commit id
 }
 
 impl Drop for Engine {
@@ -66,6 +69,8 @@ impl Engine {
             indexer,
             old_files: Arc::new(RwLock::new(old_files)),
             file_ids: fids,
+            batch_commit_lock: Default::default(),
+            batch_commit_id: Default::default(), // TODO: create a persistent sequence id
         };
         engine.load_index_from_data_files()?;
 
