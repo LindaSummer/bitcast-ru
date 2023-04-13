@@ -54,6 +54,9 @@ pub enum Errors {
 
     #[error("exceed maximum allowed batch size")]
     ExceedBatchMaxSize,
+
+    #[error("encode failure")]
+    EncodingError,
 }
 
 pub type Result<T> = result::Result<T, Errors>;

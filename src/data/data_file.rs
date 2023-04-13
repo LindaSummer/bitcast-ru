@@ -199,7 +199,7 @@ mod tests {
         let rec1 = LogRecord {
             key: "\0".as_bytes().to_vec(),
             value: Default::default(),
-            record_type: LogRecordType::NORAML,
+            record_type: LogRecordType::Normal,
         };
         let (data, crc1) = (rec1.encode(), rec1.get_crc());
         let size = datafile.write(&data);
@@ -216,7 +216,7 @@ mod tests {
         let rec2 = LogRecord {
             key: "\0sdaas".as_bytes().to_vec(),
             value: "dasdsadsadea\0dsada\0".as_bytes().to_vec(),
-            record_type: LogRecordType::NORAML,
+            record_type: LogRecordType::Normal,
         };
         let (data, crc2) = (rec2.encode(), rec2.get_crc());
         let size = datafile.write(&data);
@@ -238,7 +238,7 @@ mod tests {
         let rec3 = LogRecord {
             key: "ssdda\0sdaas".as_bytes().to_vec(),
             value: Default::default(),
-            record_type: LogRecordType::DELETED,
+            record_type: LogRecordType::Deleted,
         };
         let (data, crc3) = (rec3.encode(), rec3.get_crc());
         let size = datafile.write(&data);

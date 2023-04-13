@@ -9,6 +9,7 @@ use std::{
 use bytes::Bytes;
 use log::{error, info, warn};
 use parking_lot::{Mutex, RwLock};
+use ulid::Ulid;
 
 use crate::{
     data::{
@@ -32,6 +33,7 @@ pub struct Engine {
     file_ids: Vec<u32>, // file id list, only use in database initialize
 
     pub(crate) batch_commit_lock: Mutex<()>, // batch commit global lock
+    pub(crate) batch_prefix: Vec<u8>,
     pub(crate) batch_commit_id: Arc<AtomicUsize>, // latest batch commit id
 }
 
@@ -63,6 +65,8 @@ impl Engine {
 
         let indexer = Box::new(new_indexer(opt.index_type.clone()));
 
+        let ulid = Ulid::new();
+
         let mut engine = Engine {
             options: Arc::new(opt),
             active_file: Arc::new(RwLock::new(active_file)),
@@ -70,7 +74,8 @@ impl Engine {
             old_files: Arc::new(RwLock::new(old_files)),
             file_ids: fids,
             batch_commit_lock: Default::default(),
-            batch_commit_id: Default::default(), // TODO: create a persistent sequence id
+            batch_prefix: ulid.to_string().into_bytes(), // TODO: make it generated from a distributed system
+            batch_commit_id: Default::default(),         // TODO: create a persistent sequence id
         };
         engine.load_index_from_data_files()?;
 
@@ -85,7 +90,7 @@ impl Engine {
         let record = LogRecord {
             key: key.to_vec(),
             value: value.to_vec(),
-            record_type: LogRecordType::NORAML,
+            record_type: LogRecordType::Normal,
         };
 
         let record_pos = self.append_log_record(record.borrow())?;
@@ -126,7 +131,7 @@ impl Engine {
         };
 
         let record = hint_file.read_log_record(pos.offset)?;
-        if record.record.record_type == LogRecordType::DELETED {
+        if record.record.record_type == LogRecordType::Deleted {
             Err(Errors::KeyNotFound)
         } else {
             Ok(record.record.value.into())
@@ -145,7 +150,7 @@ impl Engine {
     /// # Errors
     ///
     /// This function will return an error if active file sync, create or write failure.
-    fn append_log_record(&self, record: &LogRecord) -> Result<LogRecordPos> {
+    pub(crate) fn append_log_record(&self, record: &LogRecord) -> Result<LogRecordPos> {
         let encode_log = record.encode();
         let mut active_file = self.active_file.write();
         if active_file.get_offset() + encode_log.len() as u64 > self.options.datafile_size {
@@ -200,7 +205,8 @@ impl Engine {
                     }
                 }?;
                 if !match log_record.record_type {
-                    LogRecordType::NORAML => {
+                    // TODO: update data loading for batch commit
+                    LogRecordType::Normal => {
                         let key = log_record.key.to_vec();
                         self.indexer.put(
                             key,
@@ -210,10 +216,11 @@ impl Engine {
                             },
                         )
                     }
-                    LogRecordType::DELETED => {
+                    LogRecordType::Deleted => {
                         let key = log_record.key.to_vec();
                         self.indexer.delete(key)
                     }
+                    LogRecordType::BatchCommit => todo!(),
                 } {
                     error!("failed to update index");
                     return Err(Errors::FailToReadDatabaseDirectory);
@@ -239,7 +246,7 @@ impl Engine {
                 let record = LogRecord {
                     key: key.to_vec(),
                     value: Default::default(),
-                    record_type: LogRecordType::DELETED,
+                    record_type: LogRecordType::Deleted,
                 };
                 self.append_log_record(&record).map(|_| ())?;
                 match self.indexer.delete(key.to_vec()) {

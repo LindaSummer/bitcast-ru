@@ -3,8 +3,10 @@ use std::{
     sync::{atomic::Ordering, Arc},
 };
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
+use log::error;
 use parking_lot::Mutex;
+use prost::encode_length_delimiter;
 
 use crate::{
     data::log_record::{LogRecord, LogRecordType},
@@ -12,6 +14,8 @@ use crate::{
     error::{Errors, Result},
     options::WriteBatchOptions,
 };
+
+const TXN_FIN_PREFIX: &[u8] = "txn_fin_prefix".as_bytes();
 
 pub struct WriteBatch<'a> {
     engine: &'a mut Engine,
@@ -38,7 +42,7 @@ impl WriteBatch<'_> {
         let record = LogRecord {
             key: key.clone(),
             value,
-            record_type: LogRecordType::NORAML,
+            record_type: LogRecordType::Normal,
         };
 
         let mut lock_guard = self.pending_batch.lock();
@@ -69,19 +73,19 @@ impl WriteBatch<'_> {
             .or_insert(LogRecord {
                 key: key.clone(),
                 value: Default::default(),
-                record_type: LogRecordType::DELETED,
+                record_type: LogRecordType::Deleted,
             })
             .record_type
-            == LogRecordType::NORAML
+            == LogRecordType::Normal
         {
             lock_guard.remove(&key);
             if has_key {
                 lock_guard.insert(
                     key.clone(),
                     LogRecord {
-                        key: key.clone(),
+                        key,
                         value: Default::default(),
-                        record_type: LogRecordType::DELETED,
+                        record_type: LogRecordType::Deleted,
                     },
                 );
             }
@@ -100,15 +104,52 @@ impl WriteBatch<'_> {
         }
 
         let seq_id = self.engine.batch_commit_id.fetch_add(1, Ordering::SeqCst);
-        let commit_lock = self.engine.batch_commit_lock.lock();
+        let prefix = &self.engine.batch_prefix;
+        let _commit_lock = self.engine.batch_commit_lock.lock();
 
-        // TODO: add log record batch with seq_id to engine and set a finish flag in end
+        let record_pos = batch
+            .values()
+            .try_fold(HashMap::new(), |mut prev, record| {
+                let record = LogRecord {
+                    key: log_record_key_with_sequence(&record.key, prefix, seq_id)?,
+                    value: record.value.clone(),
+                    record_type: record.record_type,
+                };
+                let pos = self.engine.append_log_record(&record)?;
+                prev.insert(pos, record);
+                Ok(prev)
+            })?;
 
-        todo!()
+        self.engine.append_log_record(&LogRecord {
+            key: log_record_key_with_sequence(TXN_FIN_PREFIX, prefix, seq_id)?,
+            value: Default::default(),
+            record_type: LogRecordType::BatchCommit,
+        })?;
+
+        // update index
+
+        record_pos
+            .into_iter()
+            .try_for_each(|(pos, record)| -> Result<()> {
+                match self.engine.indexer.put(record.key, pos) {
+                    true => Ok(()),
+                    false => Err(Errors::FailToUpdateIndex),
+                }
+            })
     }
 }
 
-fn log_record_key_with_sequence(key: &[u8], seq_id: usize) -> (Vec<u8>, usize) {
-    // TODO: implement it
-    todo!()
+fn log_record_key_with_sequence(key: &[u8], prefix: &[u8], seq_id: usize) -> Result<Vec<u8>> {
+    let mut buffer = BytesMut::new();
+    encode_length_delimiter(prefix.len(), &mut buffer).map_err(|e| {
+        error!("encode batch record failed: {}", e);
+        Errors::EncodingError
+    })?;
+    buffer.extend_from_slice(prefix);
+    encode_length_delimiter(seq_id, &mut buffer).map_err(|e| {
+        error!("encode batch record failed: {}", e);
+        Errors::EncodingError
+    })?;
+    buffer.extend_from_slice(key);
+    Ok(buffer.into())
 }

@@ -2,7 +2,7 @@ use bytes::{BufMut, BytesMut};
 use prost::{encode_length_delimiter, length_delimiter_len};
 
 /// LogRecordPos description of a record position with file id and offset
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct LogRecordPos {
     pub(crate) file_id: u32,
     pub(crate) offset: u64,
@@ -12,17 +12,21 @@ pub struct LogRecordPos {
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum LogRecordType {
     /// a normal record of a log
-    NORAML = 1,
+    Normal = 1,
 
     /// tombstone record of a log
-    DELETED = 2,
+    Deleted = 2,
+
+    /// batch commit finished
+    BatchCommit = 3,
 }
 
 impl LogRecordType {
     pub(crate) fn from_u8(v: u8) -> Self {
         match v {
-            1 => LogRecordType::NORAML,
-            2 => LogRecordType::DELETED,
+            1 => LogRecordType::Normal,
+            2 => LogRecordType::Deleted,
+            3 => LogRecordType::BatchCommit,
             _ => unreachable!(),
         }
     }
@@ -111,7 +115,7 @@ mod tests {
         let rec = LogRecord {
             key: "my-key".as_bytes().to_vec(),
             value: "my_value".as_bytes().to_vec(),
-            record_type: LogRecordType::NORAML,
+            record_type: LogRecordType::Normal,
         };
         let (vec, crc) = rec.encode_and_crc();
         assert_eq!(vec.len(), 21);
@@ -120,7 +124,7 @@ mod tests {
         let rec = LogRecord {
             key: "my-key-1".as_bytes().to_vec(),
             value: vec![],
-            record_type: LogRecordType::NORAML,
+            record_type: LogRecordType::Normal,
         };
         let (vec, crc) = rec.encode_and_crc();
         assert_eq!(vec.len(), 15);
@@ -129,7 +133,7 @@ mod tests {
         let rec = LogRecord {
             key: "my-key-1".as_bytes().to_vec(),
             value: vec![],
-            record_type: LogRecordType::DELETED,
+            record_type: LogRecordType::Deleted,
         };
         let (vec, crc) = rec.encode_and_crc();
         assert_eq!(vec.len(), 15);
