@@ -7,11 +7,12 @@ use std::{
 };
 
 use bytes::Bytes;
-use log::{error, info, warn};
+use log::{info, warn};
 use parking_lot::{Mutex, RwLock};
 use ulid::Ulid;
 
 use crate::{
+    batch::{log_record_key_parse, log_record_key_with_sequence, NON_TXN_PREFIX},
     data::{
         data_file::{DataFile, DATAFILE_NAME_SUFFIX, DATAFILE_SEPARATOR},
         log_record::{LogRecord, LogRecordPos, LogRecordType},
@@ -22,6 +23,7 @@ use crate::{
 };
 
 const INITAIL_FILE_ID: u32 = 0;
+const NON_BATCH_COMMIT_ID: usize = 0;
 
 pub struct Engine {
     options: Arc<Options>,
@@ -75,7 +77,7 @@ impl Engine {
             file_ids: fids,
             batch_commit_lock: Default::default(),
             batch_prefix: ulid.to_string().into_bytes(), // TODO: make it generated from a distributed system
-            batch_commit_id: Default::default(),         // TODO: create a persistent sequence id
+            batch_commit_id: Arc::new(AtomicUsize::new(1)), // TODO: create a persistent sequence id
         };
         engine.load_index_from_data_files()?;
 
@@ -88,12 +90,12 @@ impl Engine {
         }
 
         let record = LogRecord {
-            key: key.to_vec(),
+            key: log_record_key_with_sequence(&key, NON_TXN_PREFIX, NON_BATCH_COMMIT_ID)?,
             value: value.to_vec(),
             record_type: LogRecordType::Normal,
         };
 
-        let record_pos = self.append_log_record(record.borrow())?;
+        let record_pos = self.append_log_record(&record)?;
 
         match self.indexer.put(key.to_vec(), record_pos) {
             true => Ok(()),
@@ -184,6 +186,8 @@ impl Engine {
         let mut active_file = self.active_file.write();
         let old_files = self.old_files.read();
 
+        let mut commit_tasks = HashMap::new();
+
         for (i, fid) in self.file_ids.iter().enumerate() {
             let mut offset: u64 = 0;
             loop {
@@ -204,27 +208,83 @@ impl Engine {
                         Err(e)
                     }
                 }?;
-                if !match log_record.record_type {
+                let key = log_record_key_parse(&log_record.key)?;
+                let pos = LogRecordPos {
+                    file_id: *fid,
+                    offset,
+                };
+                match log_record.record_type {
                     // TODO: update data loading for batch commit
                     LogRecordType::Normal => {
-                        let key = log_record.key.to_vec();
-                        self.indexer.put(
-                            key,
-                            LogRecordPos {
-                                file_id: *fid,
-                                offset,
-                            },
-                        )
+                        if key.seq_id == NON_BATCH_COMMIT_ID {
+                            if self.indexer.put(key.key, pos) {
+                                Ok(())
+                            } else {
+                                Err(Errors::FailToUpdateIndex)
+                            }
+                        } else {
+                            commit_tasks.entry(key.seq_id).or_insert(vec![(
+                                key.key,
+                                pos,
+                                LogRecordType::Normal,
+                            )]);
+                            _ = key.prefix; // TODO: for future different tasks
+                            Ok(())
+                        }
                     }
                     LogRecordType::Deleted => {
-                        let key = log_record.key.to_vec();
-                        self.indexer.delete(key)
+                        if key.seq_id == NON_BATCH_COMMIT_ID {
+                            if self.indexer.delete(key.key) {
+                                Ok(())
+                            } else {
+                                Err(Errors::FailToUpdateIndex)
+                            }
+                        } else {
+                            commit_tasks.entry(key.seq_id).or_insert(vec![(
+                                key.key,
+                                pos,
+                                LogRecordType::Deleted,
+                            )]);
+                            _ = key.prefix;
+                            Ok(())
+                        }
                     }
-                    LogRecordType::BatchCommit => todo!(),
-                } {
-                    error!("failed to update index");
-                    return Err(Errors::FailToReadDatabaseDirectory);
-                }
+                    // LogRecordType::BatchCommit => todo!()
+                    LogRecordType::BatchCommit => {
+                        let res = commit_tasks
+                            .get(&key.seq_id)
+                            .ok_or(Errors::DatabaseFileCorrupted)
+                            .and_then(|task| {
+                                // TODO: optimize this task for add and remove same key
+                                task.iter()
+                                    .try_for_each(|(key, pos, task_type)| match task_type {
+                                        LogRecordType::Normal => {
+                                            if self.indexer.put(key.clone(), *pos) {
+                                                Ok(())
+                                            } else {
+                                                Err(Errors::FailToUpdateIndex)
+                                            }
+                                        }
+                                        LogRecordType::Deleted => {
+                                            if self.indexer.delete(key.clone()) {
+                                                Ok(())
+                                            } else {
+                                                warn!("delete index failed, key {:?}, maybe it has been deleted in other non batch actions", key);
+                                                Ok(())
+                                            }
+                                        }
+                                        LogRecordType::BatchCommit => unreachable!(),
+                                    })
+                            });
+                            match res {
+                                Ok(_) => match commit_tasks.remove(&key.seq_id) {
+                                    Some(_) => Ok(()),
+                                    None => Err(Errors::FailToUpdateIndex),
+                                },
+                                Err(err) => Err(err),
+                            }
+                    }
+                }?;
                 offset += size;
             }
 
@@ -244,7 +304,7 @@ impl Engine {
         match self.indexer.get(key.to_vec()) {
             Some(_) => {
                 let record = LogRecord {
-                    key: key.to_vec(),
+                    key: log_record_key_with_sequence(&key, NON_TXN_PREFIX, NON_BATCH_COMMIT_ID)?,
                     value: Default::default(),
                     record_type: LogRecordType::Deleted,
                 };

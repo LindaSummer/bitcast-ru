@@ -57,6 +57,9 @@ pub enum Errors {
 
     #[error("encode failure")]
     EncodingError,
+
+    #[error("decode failure")]
+    DecodingError,
 }
 
 pub type Result<T> = result::Result<T, Errors>;

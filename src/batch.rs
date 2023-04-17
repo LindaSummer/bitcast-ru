@@ -6,16 +6,17 @@ use std::{
 use bytes::{Bytes, BytesMut};
 use log::error;
 use parking_lot::Mutex;
-use prost::encode_length_delimiter;
+use prost::{decode_length_delimiter, encode_length_delimiter};
 
 use crate::{
-    data::log_record::{LogRecord, LogRecordType},
+    data::log_record::{LogRecord, LogRecordKey, LogRecordType},
     db::Engine,
     error::{Errors, Result},
     options::WriteBatchOptions,
 };
 
 const TXN_FIN_PREFIX: &[u8] = "txn_fin_prefix".as_bytes();
+pub(crate) const NON_TXN_PREFIX: &[u8] = "non_txn".as_bytes();
 
 pub struct WriteBatch<'a> {
     engine: &'a mut Engine,
@@ -139,7 +140,7 @@ impl WriteBatch<'_> {
     }
 }
 
-fn log_record_key_with_sequence(key: &[u8], prefix: &[u8], seq_id: usize) -> Result<Vec<u8>> {
+pub(crate) fn log_record_key_with_sequence(key: &[u8], prefix: &[u8], seq_id: usize) -> Result<Vec<u8>> {
     let mut buffer = BytesMut::new();
     encode_length_delimiter(prefix.len(), &mut buffer).map_err(|e| {
         error!("encode batch record failed: {}", e);
@@ -152,4 +153,24 @@ fn log_record_key_with_sequence(key: &[u8], prefix: &[u8], seq_id: usize) -> Res
     })?;
     buffer.extend_from_slice(key);
     Ok(buffer.into())
+}
+
+pub(crate) fn log_record_key_parse(key: &[u8]) -> Result<LogRecordKey> {
+    let mut buffer: BytesMut = key.into();
+    let pos = decode_length_delimiter(&mut buffer).map_err(|e| {
+        error!("decode log record with commit id failed: {}", e);
+        Errors::DecodingError
+    })?;
+    let prefix = buffer.split_to(pos);
+
+    let seq_id = decode_length_delimiter(&mut buffer).map_err(|e| {
+        error!("decode log record with commit id failed: {}", e);
+        Errors::DecodingError
+    })?;
+
+    Ok(LogRecordKey {
+        prefix: prefix.into(),
+        seq_id,
+        key: buffer.into(),
+    })
 }
