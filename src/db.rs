@@ -251,8 +251,8 @@ impl Engine {
                     }
                     // LogRecordType::BatchCommit => todo!()
                     LogRecordType::BatchCommit => {
-                        let res = commit_tasks
-                            .get(&key.seq_id)
+                        commit_tasks
+                            .remove(&key.seq_id)
                             .ok_or(Errors::DatabaseFileCorrupted)
                             .and_then(|task| {
                                 // TODO: optimize this task for add and remove same key
@@ -275,14 +275,7 @@ impl Engine {
                                         }
                                         LogRecordType::BatchCommit => unreachable!(),
                                     })
-                            });
-                        match res {
-                            Ok(_) => match commit_tasks.remove(&key.seq_id) {
-                                Some(_) => Ok(()),
-                                None => Err(Errors::FailToUpdateIndex),
-                            },
-                            Err(err) => Err(err),
-                        }
+                            })
                     }
                 }?;
                 offset += size;
