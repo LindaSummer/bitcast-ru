@@ -210,7 +210,7 @@ mod tests {
 
     use super::*;
 
-    fn new_engine() -> Engine {
+    fn new_engine() -> (Engine, Options) {
         let mut opts = Options::default();
         opts.dir_path = Builder::new()
             .prefix("bitcast-rs")
@@ -220,18 +220,21 @@ mod tests {
             .to_path_buf();
         opts.datafile_size = 64 * 1024 * 1024;
 
-        return Engine::open(opts.clone()).expect("failed to open engine");
+        return (
+            Engine::open(opts.clone()).expect("failed to open engine"),
+            opts,
+        );
     }
 
     #[test]
     fn test_new_write_batch() {
-        let engine = new_engine();
+        let (engine, _) = new_engine();
         assert_eq!(engine.write_batch(&Default::default()).is_ok(), true);
     }
 
     #[test]
     fn test_write_batch_put() {
-        let engine = new_engine();
+        let (engine, opts) = new_engine();
 
         assert_eq!(
             engine.get(get_test_key(101).into()),
@@ -287,11 +290,18 @@ mod tests {
             engine.get(get_test_key(101).into()),
             Ok(get_test_value(101).into())
         );
+
+        assert_eq!(engine.close(), Ok(()));
+        let engine = Engine::open(opts.clone()).expect("failed to open engine");
+        assert_eq!(
+            engine.get(get_test_key(101).into()),
+            Ok(get_test_value(101).into())
+        );
     }
 
     #[test]
     fn test_write_batch_put_and_update() {
-        let engine = new_engine();
+        let (engine, opts) = new_engine();
 
         assert_eq!(
             engine.get(get_test_key(101).into()),
@@ -388,11 +398,18 @@ mod tests {
             write_batch.get(&get_test_key(101).to_vec()),
             Ok(get_test_value(103).to_vec())
         );
+
+        assert_eq!(engine.close(), Ok(()));
+        let engine = Engine::open(opts.clone()).expect("failed to open engine");
+        assert_eq!(
+            engine.get(get_test_key(101).into()),
+            Ok(get_test_value(103).into())
+        );
     }
 
     #[test]
     fn test_write_batch_put_and_delete() {
-        let engine = new_engine();
+        let (engine, opts) = new_engine();
 
         assert_eq!(
             engine.get(get_test_key(101).into()),
@@ -503,11 +520,18 @@ mod tests {
             write_batch.get(&get_test_key(101).to_vec()),
             Err(Errors::KeyNotFound)
         );
+
+        assert_eq!(engine.close(), Ok(()));
+        let engine = Engine::open(opts.clone()).expect("failed to open engine");
+        assert_eq!(
+            engine.get(get_test_key(101).into()),
+            Err(Errors::KeyNotFound)
+        );
     }
 
     #[test]
     fn test_write_batch_put_and_delete_with_no_batch_add() {
-        let engine = new_engine();
+        let (engine, opts) = new_engine();
 
         assert_eq!(
             engine.get(get_test_key(101).into()),
@@ -663,6 +687,13 @@ mod tests {
         assert_eq!(
             write_batch.get(&get_test_key(101).to_vec()),
             Err(Errors::KeyNotFound),
+        );
+
+        assert_eq!(engine.close(), Ok(()));
+        let engine = Engine::open(opts.clone()).expect("failed to open engine");
+        assert_eq!(
+            engine.get(get_test_key(101).into()),
+            Err(Errors::KeyNotFound)
         );
     }
 
