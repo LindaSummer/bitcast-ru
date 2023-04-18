@@ -276,13 +276,13 @@ impl Engine {
                                         LogRecordType::BatchCommit => unreachable!(),
                                     })
                             });
-                            match res {
-                                Ok(_) => match commit_tasks.remove(&key.seq_id) {
-                                    Some(_) => Ok(()),
-                                    None => Err(Errors::FailToUpdateIndex),
-                                },
-                                Err(err) => Err(err),
-                            }
+                        match res {
+                            Ok(_) => match commit_tasks.remove(&key.seq_id) {
+                                Some(_) => Ok(()),
+                                None => Err(Errors::FailToUpdateIndex),
+                            },
+                            Err(err) => Err(err),
+                        }
                     }
                 }?;
                 offset += size;

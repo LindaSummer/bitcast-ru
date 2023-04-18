@@ -106,6 +106,7 @@ pub(crate) fn log_record_max_size() -> usize {
     LOG_TYPE_FLAG_SIZE + length_delimiter_len(std::u32::MAX as usize) * 2 + LOG_CRC_SIZE
 }
 
+#[derive(PartialEq, Debug)]
 pub(crate) struct LogRecordKey {
     pub(crate) prefix: Vec<u8>,
     pub(crate) seq_id: usize,
