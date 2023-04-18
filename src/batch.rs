@@ -698,6 +698,175 @@ mod tests {
     }
 
     #[test]
+    fn test_simple_batch_commit_retrieve() {
+        let (engine, opts) = new_engine();
+        assert_eq!(
+            engine.get(get_test_key(101).into()),
+            Err(Errors::KeyNotFound)
+        );
+        // assert_eq!(engine.put(get_test_key(103), get_test_value(103)), Ok(()));
+
+        let mut write_batch = engine
+            .write_batch(&Default::default())
+            .expect("failed to create write batch");
+
+        assert_eq!(
+            write_batch.put(&get_test_key(100), &get_test_value(1000)),
+            Ok(())
+        );
+        // assert_eq!(
+        //     write_batch.put(&get_test_key(100), &get_test_value(1001)),
+        //     Ok(())
+        // );
+        // assert_eq!(
+        //     write_batch.put(&get_test_key(100), &get_test_value(1002)),
+        //     Ok(())
+        // );
+        assert_eq!(
+            write_batch.put(&get_test_key(101), &get_test_value(1010)),
+            Ok(())
+        );
+
+        // assert_eq!(write_batch.delete(&get_test_key(103)), Ok(()));
+        assert_eq!(write_batch.commit(), Ok(()));
+
+        let mut write_batch = engine
+            .write_batch(&Default::default())
+            .expect("failed to create write batch");
+
+        // assert_eq!(
+        //     write_batch.put(&get_test_key(110), &get_test_value(1100)),
+        //     Ok(())
+        // );
+        // assert_eq!(
+        //     write_batch.put(&get_test_key(100), &get_test_value(1011)),
+        //     Ok(())
+        // );
+        assert_eq!(write_batch.commit(), Ok(()));
+
+        // assert_eq!(
+        //     engine.get(get_test_key(100).into()),
+        //     Ok(get_test_value(1011).into())
+        // );
+        assert_eq!(
+            engine.get(get_test_key(101).into()),
+            Ok(get_test_value(1010).into())
+        );
+
+        assert_eq!(engine.close(), Ok(()));
+        let engine = Engine::open(opts.clone()).expect("failed to open engine");
+        // assert_eq!(
+        //     engine.get(get_test_key(100).into()),
+        //     Ok(get_test_value(1011).into())
+        // );
+        assert_eq!(
+            engine.get(get_test_key(101).into()),
+            Ok(get_test_value(1010).into())
+        );
+    }
+
+    #[test]
+    fn test_complex_batch_commit_retrieve() {
+        let (engine, opts) = new_engine();
+        assert_eq!(
+            engine.get(get_test_key(101).into()),
+            Err(Errors::KeyNotFound)
+        );
+
+        (200..10000).for_each(|x| {
+            assert_eq!(engine.put(get_test_key(x), get_test_value(x)), Ok(()));
+        });
+
+        let mut write_batch = engine
+            .write_batch(&Default::default())
+            .expect("failed to create write batch");
+
+        assert_eq!(
+            write_batch.put(&get_test_key(100), &get_test_value(1000)),
+            Ok(())
+        );
+        assert_eq!(
+            write_batch.put(&get_test_key(100), &get_test_value(1001)),
+            Ok(())
+        );
+        assert_eq!(
+            write_batch.put(&get_test_key(100), &get_test_value(1002)),
+            Ok(())
+        );
+        assert_eq!(
+            write_batch.put(&get_test_key(101), &get_test_value(1010)),
+            Ok(())
+        );
+        assert_eq!(
+            write_batch.put(&get_test_key(102), &get_test_value(1020)),
+            Ok(())
+        );
+        assert_eq!(write_batch.delete(&get_test_key(203)), Ok(()));
+        assert_eq!(write_batch.commit(), Ok(()));
+
+        let mut write_batch = engine
+            .write_batch(&Default::default())
+            .expect("failed to create write batch");
+
+        assert_eq!(
+            write_batch.put(&get_test_key(110), &get_test_value(1100)),
+            Ok(())
+        );
+        assert_eq!(
+            write_batch.put(&get_test_key(100), &get_test_value(1011)),
+            Ok(())
+        );
+
+        assert_eq!(write_batch.delete(&get_test_key(280)), Ok(()));
+        assert_eq!(write_batch.delete(&get_test_key(102)), Ok(()));
+        assert_eq!(write_batch.commit(), Ok(()));
+
+        assert_eq!(
+            engine.get(get_test_key(100).into()),
+            Ok(get_test_value(1011).into())
+        );
+        assert_eq!(
+            engine.get(get_test_key(101).into()),
+            Ok(get_test_value(1010).into())
+        );
+        assert_eq!(
+            engine.get(get_test_key(102).into()),
+            Err(Errors::KeyNotFound)
+        );
+        assert_eq!(
+            engine.get(get_test_key(110).into()),
+            Ok(get_test_value(1100).into())
+        );
+        assert_eq!(
+            engine.get(get_test_key(280).into()),
+            Err(Errors::KeyNotFound)
+        );
+
+        assert_eq!(engine.close(), Ok(()));
+        let engine = Engine::open(opts.clone()).expect("failed to open engine");
+        assert_eq!(
+            engine.get(get_test_key(100).into()),
+            Ok(get_test_value(1011).into())
+        );
+        assert_eq!(
+            engine.get(get_test_key(101).into()),
+            Ok(get_test_value(1010).into())
+        );
+        assert_eq!(
+            engine.get(get_test_key(102).into()),
+            Err(Errors::KeyNotFound)
+        );
+        assert_eq!(
+            engine.get(get_test_key(110).into()),
+            Ok(get_test_value(1100).into())
+        );
+        assert_eq!(
+            engine.get(get_test_key(280).into()),
+            Err(Errors::KeyNotFound)
+        );
+    }
+
+    #[test]
     fn test_log_record_key_with_sequence() {
         let serialized_key = log_record_key_with_sequence(
             &get_test_key(101).to_vec(),
