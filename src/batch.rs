@@ -35,29 +35,29 @@ impl Engine {
 }
 
 impl WriteBatch<'_> {
-    pub fn put(&mut self, key: Vec<u8>, value: Vec<u8>) -> Result<()> {
+    pub fn put(&mut self, key: &[u8], value: &[u8]) -> Result<()> {
         if key.is_empty() {
             return Err(Errors::EmptyKey);
         }
 
         let record = LogRecord {
-            key: key.clone(),
-            value,
+            key: key.into(),
+            value: value.into(),
             record_type: LogRecordType::Normal,
         };
 
         let mut lock_guard = self.pending_batch.lock();
-        lock_guard.insert(key, record);
+        lock_guard.insert(key.into(), record);
 
         Ok(())
     }
 
-    pub fn delete(&mut self, key: Vec<u8>) -> Result<()> {
+    pub fn delete(&mut self, key: &[u8]) -> Result<()> {
         if key.is_empty() {
             return Err(Errors::EmptyKey);
         }
 
-        let has_key = match self.engine.get(Bytes::copy_from_slice(&key)) {
+        let has_key = match self.engine.get(Bytes::copy_from_slice(key)) {
             Ok(_) => Ok(true),
             Err(err) => {
                 if err == Errors::KeyNotFound {
@@ -70,21 +70,21 @@ impl WriteBatch<'_> {
 
         let mut lock_guard = self.pending_batch.lock();
         if lock_guard
-            .entry(key.clone())
+            .entry(key.into())
             .or_insert(LogRecord {
-                key: key.clone(),
+                key: key.into(),
                 value: Default::default(),
                 record_type: LogRecordType::Deleted,
             })
             .record_type
             == LogRecordType::Normal
         {
-            lock_guard.remove(&key);
+            lock_guard.remove(key);
             if has_key {
                 lock_guard.insert(
-                    key.clone(),
+                    key.into(),
                     LogRecord {
-                        key,
+                        key: key.into(),
                         value: Default::default(),
                         record_type: LogRecordType::Deleted,
                     },
@@ -141,6 +141,21 @@ impl WriteBatch<'_> {
 
         batch.clear();
         Ok(())
+    }
+
+    pub fn get(&self, key: &[u8]) -> Result<Vec<u8>> {
+        let batch = self.pending_batch.lock();
+        if let Some(not_commit) = batch.get(key) {
+            match not_commit.record_type {
+                LogRecordType::Normal => Ok(not_commit.value.clone()),
+                LogRecordType::Deleted => Err(Errors::KeyNotFound),
+                LogRecordType::BatchCommit => unreachable!(),
+            }
+        } else {
+            self.engine
+                .get(key.to_vec().into())
+                .map(|value| value.into())
+        }
     }
 }
 
@@ -227,12 +242,16 @@ mod tests {
             .write_batch(&Default::default())
             .expect("failed to create write batch");
         assert_eq!(
-            write_batch.put(get_test_key(101).into(), get_test_value(101).into()),
+            write_batch.put(&get_test_key(101).to_vec(), &get_test_value(101).to_vec()),
             Ok(())
         );
         assert_eq!(
             engine.get(get_test_key(101).into()),
             Err(Errors::KeyNotFound)
+        );
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Ok(get_test_value(101).to_vec())
         );
 
         assert_eq!(
@@ -255,7 +274,15 @@ mod tests {
             engine.get(get_test_key(101).into()),
             Err(Errors::KeyNotFound)
         );
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Ok(get_test_value(101).to_vec())
+        );
         assert_eq!(write_batch.commit(), Ok(()));
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Ok(get_test_value(101).to_vec())
+        );
         assert_eq!(
             engine.get(get_test_key(101).into()),
             Ok(get_test_value(101).into())
@@ -275,12 +302,16 @@ mod tests {
             .write_batch(&Default::default())
             .expect("failed to create write batch");
         assert_eq!(
-            write_batch.put(get_test_key(101).into(), get_test_value(101).into()),
+            write_batch.put(&get_test_key(101).to_vec(), &get_test_value(101).to_vec()),
             Ok(())
         );
         assert_eq!(
             engine.get(get_test_key(101).into()),
             Err(Errors::KeyNotFound)
+        );
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Ok(get_test_value(101).to_vec())
         );
 
         assert_eq!(
@@ -303,27 +334,43 @@ mod tests {
             engine.get(get_test_key(101).into()),
             Err(Errors::KeyNotFound)
         );
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Ok(get_test_value(101).to_vec())
+        );
         assert_eq!(write_batch.commit(), Ok(()));
         assert_eq!(
             engine.get(get_test_key(101).into()),
             Ok(get_test_value(101).into())
+        );
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Ok(get_test_value(101).to_vec())
         );
 
         let mut write_batch = engine
             .write_batch(&Default::default())
             .expect("failed to create write batch");
         assert_eq!(
-            write_batch.put(get_test_key(101).into(), get_test_value(102).into()),
+            write_batch.put(&get_test_key(101).to_vec(), &get_test_value(102).to_vec()),
             Ok(())
         );
         assert_eq!(
             engine.get(get_test_key(101).into()),
             Ok(get_test_value(101).into()),
         );
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Ok(get_test_value(102).to_vec())
+        );
 
         assert_eq!(
-            write_batch.put(get_test_key(101).into(), get_test_value(102).into()),
+            write_batch.put(&get_test_key(101).to_vec(), &get_test_value(103).to_vec()),
             Ok(())
+        );
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Ok(get_test_value(103).to_vec())
         );
 
         assert_eq!(
@@ -335,7 +382,11 @@ mod tests {
 
         assert_eq!(
             engine.get(get_test_key(101).into()),
-            Ok(get_test_value(102).into())
+            Ok(get_test_value(103).into())
+        );
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Ok(get_test_value(103).to_vec())
         );
     }
 
@@ -352,12 +403,20 @@ mod tests {
             .write_batch(&Default::default())
             .expect("failed to create write batch");
         assert_eq!(
-            write_batch.put(get_test_key(101).into(), get_test_value(101).into()),
+            write_batch.get(&get_test_key(101).to_vec()),
+            Err(Errors::KeyNotFound)
+        );
+        assert_eq!(
+            write_batch.put(&get_test_key(101).to_vec(), &get_test_value(101).to_vec()),
             Ok(())
         );
         assert_eq!(
             engine.get(get_test_key(101).into()),
             Err(Errors::KeyNotFound)
+        );
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Ok(get_test_value(101).to_vec())
         );
 
         assert_eq!(
@@ -380,30 +439,54 @@ mod tests {
             engine.get(get_test_key(101).into()),
             Err(Errors::KeyNotFound)
         );
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Ok(get_test_value(101).to_vec())
+        );
         assert_eq!(write_batch.commit(), Ok(()));
         assert_eq!(
             engine.get(get_test_key(101).into()),
             Ok(get_test_value(101).into())
+        );
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Ok(get_test_value(101).to_vec())
         );
 
         let mut write_batch = engine
             .write_batch(&Default::default())
             .expect("failed to create write batch");
         assert_eq!(
-            write_batch.put(get_test_key(101).into(), get_test_value(102).into()),
+            write_batch.get(&get_test_key(101).to_vec()),
+            Ok(get_test_value(101).to_vec())
+        );
+        assert_eq!(
+            write_batch.put(&get_test_key(101).to_vec(), &get_test_value(102).to_vec()),
             Ok(())
         );
         assert_eq!(
             engine.get(get_test_key(101).into()),
             Ok(get_test_value(101).into()),
         );
-
         assert_eq!(
-            write_batch.put(get_test_key(101).into(), get_test_value(102).into()),
-            Ok(())
+            write_batch.get(&get_test_key(101).to_vec()),
+            Ok(get_test_value(102).to_vec())
         );
 
-        assert_eq!(write_batch.delete(get_test_key(101).into()), Ok(()));
+        assert_eq!(
+            write_batch.put(&get_test_key(101).to_vec(), &get_test_value(103).to_vec()),
+            Ok(())
+        );
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Ok(get_test_value(103).to_vec())
+        );
+
+        assert_eq!(write_batch.delete(&get_test_key(101).to_vec()), Ok(()));
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Err(Errors::KeyNotFound)
+        );
 
         assert_eq!(
             engine.get(get_test_key(101).into()),
@@ -416,10 +499,14 @@ mod tests {
             engine.get(get_test_key(101).into()),
             Err(Errors::KeyNotFound)
         );
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Err(Errors::KeyNotFound)
+        );
     }
 
     #[test]
-    fn test_write_batch_put_and_delete_with_no_bacth_add() {
+    fn test_write_batch_put_and_delete_with_no_batch_add() {
         let engine = new_engine();
 
         assert_eq!(
@@ -431,12 +518,20 @@ mod tests {
             .write_batch(&Default::default())
             .expect("failed to create write batch");
         assert_eq!(
-            write_batch.put(get_test_key(101).into(), get_test_value(101).into()),
+            write_batch.get(&get_test_key(101).to_vec()),
+            Err(Errors::KeyNotFound)
+        );
+        assert_eq!(
+            write_batch.put(&get_test_key(101).to_vec(), &get_test_value(101).to_vec()),
             Ok(())
         );
         assert_eq!(
             engine.get(get_test_key(101).into()),
             Err(Errors::KeyNotFound)
+        );
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Ok(get_test_value(101).into()),
         );
 
         assert_eq!(
@@ -446,6 +541,10 @@ mod tests {
         assert_eq!(
             engine.get(get_test_key(101).into()),
             Ok(get_test_value(201).into()),
+        );
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Ok(get_test_value(101).into()),
         );
 
         assert_eq!(
@@ -468,10 +567,26 @@ mod tests {
             engine.get(get_test_key(101).into()),
             Ok(get_test_value(201).into()),
         );
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Ok(get_test_value(101).into()),
+        );
         assert_eq!(write_batch.commit(), Ok(()));
         assert_eq!(
             engine.get(get_test_key(101).into()),
             Ok(get_test_value(101).into())
+        );
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Ok(get_test_value(101).into()),
+        );
+        assert_eq!(
+            engine.get(get_test_key(101).into()),
+            Ok(get_test_value(201).into())
+        );
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Ok(get_test_value(201).into()),
         );
 
         assert_eq!(engine.delete(get_test_key(101).into()), Ok(()));
@@ -479,12 +594,20 @@ mod tests {
             engine.get(get_test_key(101).into()),
             Err(Errors::KeyNotFound)
         );
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Err(Errors::KeyNotFound),
+        );
 
         let mut write_batch = engine
             .write_batch(&Default::default())
             .expect("failed to create write batch");
         assert_eq!(
-            write_batch.put(get_test_key(101).into(), get_test_value(102).into()),
+            write_batch.get(&get_test_key(101).to_vec()),
+            Err(Errors::KeyNotFound),
+        );
+        assert_eq!(
+            write_batch.put(&get_test_key(101).to_vec(), &get_test_value(102).to_vec()),
             Ok(())
         );
         assert_eq!(
@@ -492,8 +615,13 @@ mod tests {
             Err(Errors::KeyNotFound)
         );
         assert_eq!(
-            engine.delete(get_test_key(101).into()),
-            Ok(()),
+            write_batch.get(&get_test_key(101).to_vec()),
+            Ok(get_test_value(102).into()),
+        );
+        assert_eq!(engine.delete(get_test_key(101).into()), Ok(()));
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Ok(get_test_value(102).into()),
         );
 
         assert_eq!(
@@ -502,7 +630,7 @@ mod tests {
         );
 
         assert_eq!(
-            write_batch.put(get_test_key(101).into(), get_test_value(202).into()),
+            write_batch.put(&get_test_key(101).to_vec(), &get_test_value(202).to_vec()),
             Ok(())
         );
 
@@ -510,10 +638,19 @@ mod tests {
             engine.get(get_test_key(101).into()),
             Err(Errors::KeyNotFound),
         );
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Ok(get_test_value(202).into()),
+        );
 
-        assert_eq!(write_batch.delete(get_test_key(101).into()), Ok(()));
+        assert_eq!(write_batch.delete(&get_test_key(101).to_vec()), Ok(()));
         assert_eq!(
             engine.get(get_test_key(101).into()),
+            Err(Errors::KeyNotFound),
+        );
+
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
             Err(Errors::KeyNotFound),
         );
 
@@ -522,6 +659,10 @@ mod tests {
         assert_eq!(
             engine.get(get_test_key(101).into()),
             Err(Errors::KeyNotFound)
+        );
+        assert_eq!(
+            write_batch.get(&get_test_key(101).to_vec()),
+            Err(Errors::KeyNotFound),
         );
     }
 
