@@ -582,11 +582,11 @@ mod tests {
         );
         assert_eq!(
             engine.get(get_test_key(101).into()),
-            Ok(get_test_value(201).into())
+            Ok(get_test_value(101).into())
         );
         assert_eq!(
             write_batch.get(&get_test_key(101).to_vec()),
-            Ok(get_test_value(201).into()),
+            Ok(get_test_value(101).into()),
         );
 
         assert_eq!(engine.delete(get_test_key(101).into()), Ok(()));
