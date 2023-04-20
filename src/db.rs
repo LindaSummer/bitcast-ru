@@ -1,6 +1,6 @@
 use std::{
     borrow::{Borrow, BorrowMut},
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     fs,
     path::Path,
     sync::{atomic::AtomicUsize, Arc},
@@ -186,7 +186,9 @@ impl Engine {
         let mut active_file = self.active_file.write();
         let old_files = self.old_files.read();
 
-        let mut commit_tasks: BTreeMap<_, Vec<_>> = BTreeMap::new(); // batch retrieving must same order as generated
+        // batch replay commit into index's order is guaranteed by commit (txn-fin) record,
+        // so we don't need to use a ordered map here
+        let mut commit_tasks: HashMap<_, Vec<_>> = HashMap::new();
 
         for (i, fid) in self.file_ids.iter().enumerate() {
             let mut offset: u64 = 0;
