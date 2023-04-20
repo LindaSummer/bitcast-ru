@@ -1,6 +1,8 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use bytes::Bytes;
+
+use log::debug;
 use parking_lot::RwLock;
 
 use crate::{data::log_record::LogRecordPos, options::IndexIteratorOptions};
@@ -28,12 +30,14 @@ impl BTreeIndexer {
 impl Indexer for BTreeIndexer {
     fn put(&self, key: Vec<u8>, pos: LogRecordPos) -> bool {
         let mut write_guard = self.tree.write();
+        debug!("index tree is {:?}, try to put {:?}", *write_guard, key);
         write_guard.insert(key, pos);
         true
     }
 
     fn get(&self, key: Vec<u8>) -> Option<LogRecordPos> {
         let read_guard = self.tree.read();
+        debug!("index tree is {:?}, try to get: {:?}", *read_guard, key);
         read_guard.get(&key).copied()
     }
 

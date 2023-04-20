@@ -51,6 +51,18 @@ pub enum Errors {
 
     #[error("read end of file")]
     ReadEOF,
+
+    #[error("exceed maximum allowed batch size")]
+    ExceedBatchMaxSize,
+
+    #[error("encode failure")]
+    EncodingError,
+
+    #[error("failed to initialize database")]
+    InitializeFailed,
+
+    #[error("decode failure")]
+    DecodingError,
 }
 
 pub type Result<T> = result::Result<T, Errors>;

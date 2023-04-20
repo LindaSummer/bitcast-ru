@@ -3,14 +3,16 @@ use std::{
     collections::HashMap,
     fs,
     path::Path,
-    sync::Arc,
+    sync::{atomic::AtomicUsize, Arc},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use bytes::Bytes;
-use log::{error, info, warn};
-use parking_lot::RwLock;
+use log::{debug, error, info, warn};
+use parking_lot::{Mutex, RwLock};
 
 use crate::{
+    batch::{log_record_key_parse, log_record_key_with_sequence, NON_TXN_PREFIX},
     data::{
         data_file::{DataFile, DATAFILE_NAME_SUFFIX, DATAFILE_SEPARATOR},
         log_record::{LogRecord, LogRecordPos, LogRecordType},
@@ -21,6 +23,7 @@ use crate::{
 };
 
 const INITAIL_FILE_ID: u32 = 0;
+const NON_BATCH_COMMIT_ID: usize = 0;
 
 pub struct Engine {
     options: Arc<Options>,
@@ -30,6 +33,10 @@ pub struct Engine {
     pub(crate) indexer: Box<dyn index::Indexer>, // memory index manager
 
     file_ids: Vec<u32>, // file id list, only use in database initialize
+
+    pub(crate) batch_commit_lock: Mutex<()>, // batch commit global lock
+    pub(crate) batch_prefix: Vec<u8>,
+    pub(crate) batch_commit_id: Arc<AtomicUsize>, // latest batch commit id
 }
 
 impl Drop for Engine {
@@ -66,6 +73,9 @@ impl Engine {
             indexer,
             old_files: Arc::new(RwLock::new(old_files)),
             file_ids: fids,
+            batch_commit_lock: Default::default(),
+            batch_prefix: generate_nano_timestamp_prefix()?, // TODO: make it generated from a distributed system
+            batch_commit_id: Arc::new(AtomicUsize::new(1)), // TODO: create a persistent sequence id, we can retrieve it when we replay batches
         };
         engine.load_index_from_data_files()?;
 
@@ -78,12 +88,12 @@ impl Engine {
         }
 
         let record = LogRecord {
-            key: key.to_vec(),
+            key: log_record_key_with_sequence(&key, NON_TXN_PREFIX, NON_BATCH_COMMIT_ID)?,
             value: value.to_vec(),
-            record_type: LogRecordType::NORAML,
+            record_type: LogRecordType::Normal,
         };
 
-        let record_pos = self.append_log_record(record.borrow())?;
+        let record_pos = self.append_log_record(&record)?;
 
         match self.indexer.put(key.to_vec(), record_pos) {
             true => Ok(()),
@@ -121,7 +131,7 @@ impl Engine {
         };
 
         let record = hint_file.read_log_record(pos.offset)?;
-        if record.record.record_type == LogRecordType::DELETED {
+        if record.record.record_type == LogRecordType::Deleted {
             Err(Errors::KeyNotFound)
         } else {
             Ok(record.record.value.into())
@@ -140,7 +150,7 @@ impl Engine {
     /// # Errors
     ///
     /// This function will return an error if active file sync, create or write failure.
-    fn append_log_record(&self, record: &LogRecord) -> Result<LogRecordPos> {
+    pub(crate) fn append_log_record(&self, record: &LogRecord) -> Result<LogRecordPos> {
         let encode_log = record.encode();
         let mut active_file = self.active_file.write();
         if active_file.get_offset() + encode_log.len() as u64 > self.options.datafile_size {
@@ -174,6 +184,10 @@ impl Engine {
         let mut active_file = self.active_file.write();
         let old_files = self.old_files.read();
 
+        // batch replay commit into index's order is guaranteed by commit (txn-fin) record,
+        // so we don't need to use a ordered map here
+        let mut commit_tasks: HashMap<_, Vec<_>> = HashMap::new();
+
         for (i, fid) in self.file_ids.iter().enumerate() {
             let mut offset: u64 = 0;
             loop {
@@ -194,25 +208,82 @@ impl Engine {
                         Err(e)
                     }
                 }?;
-                if !match log_record.record_type {
-                    LogRecordType::NORAML => {
-                        let key = log_record.key.to_vec();
-                        self.indexer.put(
-                            key,
-                            LogRecordPos {
-                                file_id: *fid,
-                                offset,
-                            },
-                        )
+                let key = log_record_key_parse(&log_record.key)?;
+                let pos = LogRecordPos {
+                    file_id: *fid,
+                    offset,
+                };
+                debug!(
+                    "load key: {:?}, pos: {:?}, type: {:?}",
+                    key, pos, log_record.record_type
+                );
+                match log_record.record_type {
+                    // TODO: update data loading for batch commit
+                    LogRecordType::Normal => {
+                        if key.seq_id == NON_BATCH_COMMIT_ID {
+                            if self.indexer.put(key.key, pos) {
+                                Ok(())
+                            } else {
+                                Err(Errors::FailToUpdateIndex)
+                            }
+                        } else {
+                            debug!("push commit add key: {:?}", std::str::from_utf8(&key.key));
+                            commit_tasks
+                                .entry((key.prefix, key.seq_id))
+                                .or_default()
+                                .push((key.key, pos, LogRecordType::Normal));
+                            Ok(())
+                        }
                     }
-                    LogRecordType::DELETED => {
-                        let key = log_record.key.to_vec();
-                        self.indexer.delete(key)
+                    LogRecordType::Deleted => {
+                        if key.seq_id == NON_BATCH_COMMIT_ID {
+                            if self.indexer.delete(key.key) {
+                                Ok(())
+                            } else {
+                                Err(Errors::FailToUpdateIndex)
+                            }
+                        } else {
+                            debug!(
+                                "push commit delete key: {:?}",
+                                std::str::from_utf8(&key.key)
+                            );
+                            commit_tasks
+                                .entry((key.prefix, key.seq_id))
+                                .or_default()
+                                .push((key.key, pos, LogRecordType::Deleted));
+                            Ok(())
+                        }
                     }
-                } {
-                    error!("failed to update index");
-                    return Err(Errors::FailToReadDatabaseDirectory);
-                }
+                    LogRecordType::BatchCommit => {
+                        commit_tasks
+                            .remove(&(key.prefix, key.seq_id))
+                            .ok_or(Errors::DatabaseFileCorrupted)
+                            .and_then(|task| {
+                                // TODO: optimize this task for add and remove same key
+                                task.iter()
+                                    .try_for_each(|(key, pos, task_type)| match task_type {
+                                        LogRecordType::Normal => {
+                                            if self.indexer.put(key.clone(), *pos) {
+                                                debug!("update index key: {:?}", std::str::from_utf8(key));
+                                                Ok(())
+                                            } else {
+                                                Err(Errors::FailToUpdateIndex)
+                                            }
+                                        }
+                                        LogRecordType::Deleted => {
+                                            if self.indexer.delete(key.clone()) {
+                                                debug!("delete index key: {:?}", std::str::from_utf8(key));
+                                                Ok(())
+                                            } else {
+                                                warn!("delete index failed, key {:?}, maybe it has been deleted in other non batch actions", key);
+                                                Ok(())
+                                            }
+                                        }
+                                        LogRecordType::BatchCommit => unreachable!(),
+                                    })
+                            })
+                    }
+                }?;
                 offset += size;
             }
 
@@ -232,9 +303,9 @@ impl Engine {
         match self.indexer.get(key.to_vec()) {
             Some(_) => {
                 let record = LogRecord {
-                    key: key.to_vec(),
+                    key: log_record_key_with_sequence(&key, NON_TXN_PREFIX, NON_BATCH_COMMIT_ID)?,
                     value: Default::default(),
-                    record_type: LogRecordType::DELETED,
+                    record_type: LogRecordType::Deleted,
                 };
                 self.append_log_record(&record).map(|_| ())?;
                 match self.indexer.delete(key.to_vec()) {
@@ -342,3 +413,14 @@ fn load_datafiles(directory_path: &Path) -> Result<Vec<DataFile>> {
 }
 
 // fn load_index(files: &vec![DataFile]) -> Indexer {}
+
+fn generate_nano_timestamp_prefix() -> Result<Vec<u8>> {
+    let start = SystemTime::now();
+    let since_epoch = start.duration_since(UNIX_EPOCH).map_err(|err| {
+        error!("generate nano timestamp prefix failed: {}", err);
+        Errors::InitializeFailed
+    })?;
+    let nanos = since_epoch.as_nanos() as i64;
+    let bytes = nanos.to_le_bytes();
+    Ok(bytes.into())
+}
