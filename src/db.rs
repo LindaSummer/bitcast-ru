@@ -77,7 +77,7 @@ impl Engine {
             file_ids: fids,
             batch_commit_lock: Default::default(),
             batch_prefix: ulid.to_string().into_bytes(), // TODO: make it generated from a distributed system
-            batch_commit_id: Arc::new(AtomicUsize::new(1)), // TODO: create a persistent sequence id
+            batch_commit_id: Arc::new(AtomicUsize::new(1)), // TODO: create a persistent sequence id, we can retrieve it when we replay batches
         };
         engine.load_index_from_data_files()?;
 
@@ -256,7 +256,6 @@ impl Engine {
                             Ok(())
                         }
                     }
-                    // LogRecordType::BatchCommit => todo!()
                     LogRecordType::BatchCommit => {
                         commit_tasks
                             .remove(&(key.prefix, key.seq_id))

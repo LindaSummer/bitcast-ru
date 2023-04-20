@@ -71,6 +71,8 @@ fn test_engine_get() {
 
     let engine = Engine::open(opts.clone()).expect("failed to open engine");
 
+    assert_eq!(engine.get(Default::default()), Err(Errors::EmptyKey));
+
     assert_eq!(engine.get(get_test_key(100)), Err(Errors::KeyNotFound));
 
     assert!(engine.put(get_test_key(100), get_test_value(100)).is_ok());

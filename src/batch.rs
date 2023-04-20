@@ -233,6 +233,44 @@ mod tests {
     }
 
     #[test]
+    fn test_write_batch_not_commit() {
+        let (engine, opts) = new_engine();
+
+        assert_eq!(
+            engine.get(get_test_key(101).into()),
+            Err(Errors::KeyNotFound)
+        );
+
+        let mut write_batch = engine
+            .write_batch(&Default::default())
+            .expect("failed to create write batch");
+
+        (0..10000).for_each(|i| {
+            assert_eq!(
+                write_batch.put(&get_test_key(i).to_vec(), &get_test_value(i).to_vec()),
+                Ok(())
+            );
+            assert_eq!(engine.get(get_test_key(i).into()), Err(Errors::KeyNotFound));
+            assert_eq!(
+                write_batch.get(&get_test_key(i).to_vec()),
+                Ok(get_test_value(i).to_vec())
+            );
+        });
+
+        drop(write_batch);
+
+        (0..10000).for_each(|i| {
+            assert_eq!(engine.get(get_test_key(i).into()), Err(Errors::KeyNotFound));
+        });
+
+        assert_eq!(engine.close(), Ok(()));
+        let engine = Engine::open(opts.clone()).expect("failed to open engine");
+        (0..10000).for_each(|i| {
+            assert_eq!(engine.get(get_test_key(i).into()), Err(Errors::KeyNotFound));
+        });
+    }
+
+    #[test]
     fn test_write_batch_put() {
         let (engine, opts) = new_engine();
 
