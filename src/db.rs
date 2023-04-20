@@ -4,12 +4,12 @@ use std::{
     fs,
     path::Path,
     sync::{atomic::AtomicUsize, Arc},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use bytes::Bytes;
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use parking_lot::{Mutex, RwLock};
-use ulid::Ulid;
 
 use crate::{
     batch::{log_record_key_parse, log_record_key_with_sequence, NON_TXN_PREFIX},
@@ -67,8 +67,6 @@ impl Engine {
 
         let indexer = Box::new(new_indexer(opt.index_type.clone()));
 
-        let ulid = Ulid::new();
-
         let mut engine = Engine {
             options: Arc::new(opt),
             active_file: Arc::new(RwLock::new(active_file)),
@@ -76,7 +74,7 @@ impl Engine {
             old_files: Arc::new(RwLock::new(old_files)),
             file_ids: fids,
             batch_commit_lock: Default::default(),
-            batch_prefix: ulid.to_string().into_bytes(), // TODO: make it generated from a distributed system
+            batch_prefix: generate_nano_timestamp_prefix()?, // TODO: make it generated from a distributed system
             batch_commit_id: Arc::new(AtomicUsize::new(1)), // TODO: create a persistent sequence id, we can retrieve it when we replay batches
         };
         engine.load_index_from_data_files()?;
@@ -415,3 +413,14 @@ fn load_datafiles(directory_path: &Path) -> Result<Vec<DataFile>> {
 }
 
 // fn load_index(files: &vec![DataFile]) -> Indexer {}
+
+fn generate_nano_timestamp_prefix() -> Result<Vec<u8>> {
+    let start = SystemTime::now();
+    let since_epoch = start.duration_since(UNIX_EPOCH).map_err(|err| {
+        error!("generate nano timestamp prefix failed: {}", err);
+        Errors::InitializeFailed
+    })?;
+    let nanos = since_epoch.as_nanos() as i64;
+    let bytes = nanos.to_le_bytes();
+    Ok(bytes.into())
+}

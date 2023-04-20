@@ -58,6 +58,9 @@ pub enum Errors {
     #[error("encode failure")]
     EncodingError,
 
+    #[error("failed to initialize database")]
+    InitializeFailed,
+
     #[error("decode failure")]
     DecodingError,
 }
