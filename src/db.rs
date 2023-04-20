@@ -186,7 +186,7 @@ impl Engine {
         let mut active_file = self.active_file.write();
         let old_files = self.old_files.read();
 
-        let mut commit_tasks: HashMap<usize, Vec<_>> = HashMap::new();
+        let mut commit_tasks: HashMap<(_,_), Vec<_>> = HashMap::new();
 
         for (i, fid) in self.file_ids.iter().enumerate() {
             let mut offset: u64 = 0;
@@ -228,12 +228,11 @@ impl Engine {
                             }
                         } else {
                             debug!("push commit add key: {:?}", std::str::from_utf8(&key.key));
-                            commit_tasks.entry(key.seq_id).or_default().push((
+                            commit_tasks.entry((key.seq_id, key.prefix)).or_default().push((
                                 key.key,
                                 pos,
                                 LogRecordType::Normal,
                             ));
-                            _ = key.prefix; // TODO: for future different tasks
                             Ok(())
                         }
                     }
@@ -249,19 +248,18 @@ impl Engine {
                                 "push commit delete key: {:?}",
                                 std::str::from_utf8(&key.key)
                             );
-                            commit_tasks.entry(key.seq_id).or_default().push((
+                            commit_tasks.entry((key.seq_id, key.prefix)).or_default().push((
                                 key.key,
                                 pos,
                                 LogRecordType::Deleted,
                             ));
-                            _ = key.prefix;
                             Ok(())
                         }
                     }
                     // LogRecordType::BatchCommit => todo!()
                     LogRecordType::BatchCommit => {
                         commit_tasks
-                            .remove(&key.seq_id)
+                            .remove(&(key.seq_id, key.prefix))
                             .ok_or(Errors::DatabaseFileCorrupted)
                             .and_then(|task| {
                                 // TODO: optimize this task for add and remove same key
