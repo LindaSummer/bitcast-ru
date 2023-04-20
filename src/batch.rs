@@ -704,7 +704,7 @@ mod tests {
             engine.get(get_test_key(101).into()),
             Err(Errors::KeyNotFound)
         );
-        // assert_eq!(engine.put(get_test_key(103), get_test_value(103)), Ok(()));
+        assert_eq!(engine.put(get_test_key(103), get_test_value(103)), Ok(()));
 
         let mut write_batch = engine
             .write_batch(&Default::default())
@@ -714,40 +714,40 @@ mod tests {
             write_batch.put(&get_test_key(100), &get_test_value(1000)),
             Ok(())
         );
-        // assert_eq!(
-        //     write_batch.put(&get_test_key(100), &get_test_value(1001)),
-        //     Ok(())
-        // );
-        // assert_eq!(
-        //     write_batch.put(&get_test_key(100), &get_test_value(1002)),
-        //     Ok(())
-        // );
+        assert_eq!(
+            write_batch.put(&get_test_key(100), &get_test_value(1001)),
+            Ok(())
+        );
+        assert_eq!(
+            write_batch.put(&get_test_key(100), &get_test_value(1002)),
+            Ok(())
+        );
         assert_eq!(
             write_batch.put(&get_test_key(101), &get_test_value(1010)),
             Ok(())
         );
 
-        // assert_eq!(write_batch.delete(&get_test_key(103)), Ok(()));
+        assert_eq!(write_batch.delete(&get_test_key(103)), Ok(()));
         assert_eq!(write_batch.commit(), Ok(()));
 
         let mut write_batch = engine
             .write_batch(&Default::default())
             .expect("failed to create write batch");
 
-        // assert_eq!(
-        //     write_batch.put(&get_test_key(110), &get_test_value(1100)),
-        //     Ok(())
-        // );
-        // assert_eq!(
-        //     write_batch.put(&get_test_key(100), &get_test_value(1011)),
-        //     Ok(())
-        // );
+        assert_eq!(
+            write_batch.put(&get_test_key(110), &get_test_value(1100)),
+            Ok(())
+        );
+        assert_eq!(
+            write_batch.put(&get_test_key(100), &get_test_value(1011)),
+            Ok(())
+        );
         assert_eq!(write_batch.commit(), Ok(()));
 
-        // assert_eq!(
-        //     engine.get(get_test_key(100).into()),
-        //     Ok(get_test_value(1011).into())
-        // );
+        assert_eq!(
+            engine.get(get_test_key(100).into()),
+            Ok(get_test_value(1011).into())
+        );
         assert_eq!(
             engine.get(get_test_key(101).into()),
             Ok(get_test_value(1010).into())
@@ -755,10 +755,10 @@ mod tests {
 
         assert_eq!(engine.close(), Ok(()));
         let engine = Engine::open(opts.clone()).expect("failed to open engine");
-        // assert_eq!(
-        //     engine.get(get_test_key(100).into()),
-        //     Ok(get_test_value(1011).into())
-        // );
+        assert_eq!(
+            engine.get(get_test_key(100).into()),
+            Ok(get_test_value(1011).into())
+        );
         assert_eq!(
             engine.get(get_test_key(101).into()),
             Ok(get_test_value(1010).into())

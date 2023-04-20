@@ -1,3 +1,5 @@
+use core::fmt;
+
 use bytes::{BufMut, BytesMut};
 use prost::{encode_length_delimiter, length_delimiter_len};
 
@@ -106,11 +108,21 @@ pub(crate) fn log_record_max_size() -> usize {
     LOG_TYPE_FLAG_SIZE + length_delimiter_len(std::u32::MAX as usize) * 2 + LOG_CRC_SIZE
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq)]
 pub(crate) struct LogRecordKey {
     pub(crate) prefix: Vec<u8>,
     pub(crate) seq_id: usize,
     pub(crate) key: Vec<u8>,
+}
+
+impl fmt::Debug for LogRecordKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LogRecordKey")
+            .field("prefix", &std::str::from_utf8(&self.prefix))
+            .field("seq_id", &self.seq_id)
+            .field("key", &std::str::from_utf8(&self.key))
+            .finish()
+    }
 }
 
 #[cfg(test)]

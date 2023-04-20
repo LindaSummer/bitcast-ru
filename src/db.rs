@@ -7,7 +7,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use log::{info, warn};
+use log::{info, warn, debug};
 use parking_lot::{Mutex, RwLock};
 use ulid::Ulid;
 
@@ -186,7 +186,7 @@ impl Engine {
         let mut active_file = self.active_file.write();
         let old_files = self.old_files.read();
 
-        let mut commit_tasks = HashMap::new();
+        let mut commit_tasks: HashMap<usize, Vec<_>> = HashMap::new();
 
         for (i, fid) in self.file_ids.iter().enumerate() {
             let mut offset: u64 = 0;
@@ -213,6 +213,10 @@ impl Engine {
                     file_id: *fid,
                     offset,
                 };
+                debug!(
+                    "load key: {:?}, pos: {:?}, type: {:?}",
+                    key, pos, log_record.record_type
+                );
                 match log_record.record_type {
                     // TODO: update data loading for batch commit
                     LogRecordType::Normal => {
@@ -223,11 +227,12 @@ impl Engine {
                                 Err(Errors::FailToUpdateIndex)
                             }
                         } else {
-                            commit_tasks.entry(key.seq_id).or_insert(vec![(
+                            debug!("push commit add key: {:?}", std::str::from_utf8(&key.key));
+                            commit_tasks.entry(key.seq_id).or_default().push((
                                 key.key,
                                 pos,
                                 LogRecordType::Normal,
-                            )]);
+                            ));
                             _ = key.prefix; // TODO: for future different tasks
                             Ok(())
                         }
@@ -240,11 +245,15 @@ impl Engine {
                                 Err(Errors::FailToUpdateIndex)
                             }
                         } else {
-                            commit_tasks.entry(key.seq_id).or_insert(vec![(
+                            debug!(
+                                "push commit delete key: {:?}",
+                                std::str::from_utf8(&key.key)
+                            );
+                            commit_tasks.entry(key.seq_id).or_default().push((
                                 key.key,
                                 pos,
                                 LogRecordType::Deleted,
-                            )]);
+                            ));
                             _ = key.prefix;
                             Ok(())
                         }
@@ -260,6 +269,7 @@ impl Engine {
                                     .try_for_each(|(key, pos, task_type)| match task_type {
                                         LogRecordType::Normal => {
                                             if self.indexer.put(key.clone(), *pos) {
+                                                debug!("update index key: {:?}", std::str::from_utf8(key));
                                                 Ok(())
                                             } else {
                                                 Err(Errors::FailToUpdateIndex)
@@ -267,6 +277,7 @@ impl Engine {
                                         }
                                         LogRecordType::Deleted => {
                                             if self.indexer.delete(key.clone()) {
+                                                debug!("delete index key: {:?}", std::str::from_utf8(key));
                                                 Ok(())
                                             } else {
                                                 warn!("delete index failed, key {:?}, maybe it has been deleted in other non batch actions", key);
