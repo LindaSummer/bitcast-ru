@@ -1,13 +1,13 @@
 use std::{
     borrow::{Borrow, BorrowMut},
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fs,
     path::Path,
     sync::{atomic::AtomicUsize, Arc},
 };
 
 use bytes::Bytes;
-use log::{info, warn, debug};
+use log::{debug, info, warn};
 use parking_lot::{Mutex, RwLock};
 use ulid::Ulid;
 
@@ -186,7 +186,7 @@ impl Engine {
         let mut active_file = self.active_file.write();
         let old_files = self.old_files.read();
 
-        let mut commit_tasks: HashMap<(_,_), Vec<_>> = HashMap::new();
+        let mut commit_tasks: BTreeMap<_, Vec<_>> = BTreeMap::new(); // batch retrieving must same order as generated
 
         for (i, fid) in self.file_ids.iter().enumerate() {
             let mut offset: u64 = 0;
@@ -228,11 +228,10 @@ impl Engine {
                             }
                         } else {
                             debug!("push commit add key: {:?}", std::str::from_utf8(&key.key));
-                            commit_tasks.entry((key.seq_id, key.prefix)).or_default().push((
-                                key.key,
-                                pos,
-                                LogRecordType::Normal,
-                            ));
+                            commit_tasks
+                                .entry((key.prefix, key.seq_id))
+                                .or_default()
+                                .push((key.key, pos, LogRecordType::Normal));
                             Ok(())
                         }
                     }
@@ -248,18 +247,17 @@ impl Engine {
                                 "push commit delete key: {:?}",
                                 std::str::from_utf8(&key.key)
                             );
-                            commit_tasks.entry((key.seq_id, key.prefix)).or_default().push((
-                                key.key,
-                                pos,
-                                LogRecordType::Deleted,
-                            ));
+                            commit_tasks
+                                .entry((key.prefix, key.seq_id))
+                                .or_default()
+                                .push((key.key, pos, LogRecordType::Deleted));
                             Ok(())
                         }
                     }
                     // LogRecordType::BatchCommit => todo!()
                     LogRecordType::BatchCommit => {
                         commit_tasks
-                            .remove(&(key.seq_id, key.prefix))
+                            .remove(&(key.prefix, key.seq_id))
                             .ok_or(Errors::DatabaseFileCorrupted)
                             .and_then(|task| {
                                 // TODO: optimize this task for add and remove same key
