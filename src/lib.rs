@@ -5,6 +5,7 @@ pub mod options;
 
 pub mod batch;
 pub mod iterator;
+pub mod merge;
 
 mod fio;
 mod index;

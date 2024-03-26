@@ -14,18 +14,18 @@ use crate::error::{Errors, Result};
 
 use super::log_record::{log_record_max_size, ReadLogRecord};
 
-pub const DATAFILE_SEPARATOR: &str = ".";
+pub(crate) const DATAFILE_SEPARATOR: &'static str = ".";
 
-pub const DATAFILE_NAME_SUFFIX: &str = ".bcdata";
+pub(crate) const DATAFILE_NAME_SUFFIX: &'static str = ".bcdata";
 
 /// datafile for each bitcast file
 pub(crate) struct DataFile {
     /// current file id
-    file_id: Arc<RwLock<u32>>,
+    pub(super) file_id: Arc<RwLock<u32>>,
     /// current write cursor offset
-    write_offset: Arc<RwLock<u64>>,
+    pub(super) write_offset: Arc<RwLock<u64>>,
     /// io manager for file manuplation
-    io_manager: Box<dyn fio::IOManager>,
+    pub(super) io_manager: Box<dyn fio::IOManager>,
 }
 
 impl DataFile {

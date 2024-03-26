@@ -23,20 +23,22 @@ use crate::{
 };
 
 const INITAIL_FILE_ID: u32 = 0;
-const NON_BATCH_COMMIT_ID: usize = 0;
+pub(crate) const NON_BATCH_COMMIT_ID: usize = 0;
 
 pub struct Engine {
-    options: Arc<Options>,
+    pub(crate) options: Arc<Options>,
 
-    active_file: Arc<RwLock<DataFile>>, // current active file
-    old_files: Arc<RwLock<HashMap<u32, DataFile>>>, // old files
-    pub(crate) indexer: Box<dyn index::Indexer>, // memory index manager
+    pub(crate) active_file: Arc<RwLock<DataFile>>, // current active file
+    pub(crate) old_files: Arc<RwLock<HashMap<u32, DataFile>>>, // old files
+    pub(crate) indexer: Box<dyn index::Indexer>,   // memory index manager
 
-    file_ids: Vec<u32>, // file id list, only use in database initialize
+    pub(crate) file_ids: Vec<u32>, // file id list, only use in database initialize
 
     pub(crate) batch_commit_lock: Mutex<()>, // batch commit global lock
     pub(crate) batch_prefix: Vec<u8>,
     pub(crate) batch_commit_id: Arc<AtomicUsize>, // latest batch commit id
+
+    pub(crate) merge_lock: Mutex<()>, // merge lock
 }
 
 impl Drop for Engine {
@@ -75,7 +77,8 @@ impl Engine {
             file_ids: fids,
             batch_commit_lock: Default::default(),
             batch_prefix: generate_nano_timestamp_prefix()?, // TODO: make it generated from a distributed system
-            batch_commit_id: Arc::new(AtomicUsize::new(1)), // TODO: create a persistent sequence id, we can retrieve it when we replay batches
+            batch_commit_id: Arc::new(AtomicUsize::new(1)),
+            merge_lock: Default::default(), // TODO: create a persistent sequence id, we can retrieve it when we replay batches
         };
         engine.load_index_from_data_files()?;
 
@@ -157,11 +160,12 @@ impl Engine {
             active_file.sync()?;
             // let prev_active_file =
             //     DataFile::new(self.options.dir_path.clone(), active_file.file_id())?;
-            let mut old_files = self.old_files.write();
-            let mut tmp_active_file =
-                DataFile::new(self.options.dir_path.borrow(), active_file.file_id() + 1)?;
-            std::mem::swap(&mut *active_file, &mut tmp_active_file);
-            old_files.insert(tmp_active_file.file_id(), tmp_active_file);
+            // let mut old_files = self.old_files.write();
+            // let mut tmp_active_file =
+            //     DataFile::new(self.options.dir_path.borrow(), active_file.file_id() + 1)?;
+            // std::mem::swap(&mut *active_file, &mut tmp_active_file);
+            // old_files.insert(tmp_active_file.file_id(), tmp_active_file);
+            self.rotate_active_file(&mut active_file)?;
         }
         let offset = active_file.get_offset();
         active_file.write(&encode_log)?;
@@ -174,6 +178,24 @@ impl Engine {
             file_id: active_file.file_id(),
             offset,
         })
+    }
+
+    /// this function creates a new active file and rotate current active file into old file map
+    /// # Errors
+    /// This function will return an error if active file sync, create or write failure.
+    ///
+    /// # Returns
+    /// returns rotated active file's file id
+    pub(crate) fn rotate_active_file(&self, active_file: &mut DataFile) -> Result<u32> {
+        active_file.sync()?;
+        let active_id = active_file.file_id();
+        let mut old_files = self.old_files.write();
+        let mut tmp_active_file =
+            DataFile::new(self.options.dir_path.borrow(), active_file.file_id() + 1)?;
+        std::mem::swap(&mut *active_file, &mut tmp_active_file);
+        old_files.insert(tmp_active_file.file_id(), tmp_active_file);
+
+        Ok(active_id)
     }
 
     fn load_index_from_data_files(&mut self) -> Result<()> {

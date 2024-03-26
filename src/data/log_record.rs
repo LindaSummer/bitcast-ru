@@ -1,13 +1,29 @@
 use core::fmt;
 
 use bytes::{BufMut, BytesMut};
-use prost::{encode_length_delimiter, length_delimiter_len};
+use prost::{decode_length_delimiter, encode_length_delimiter, length_delimiter_len};
 
 /// LogRecordPos description of a record position with file id and offset
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct LogRecordPos {
     pub(crate) file_id: u32,
     pub(crate) offset: u64,
+}
+
+impl LogRecordPos {
+    pub(crate) fn encode(&self) -> Vec<u8> {
+        let mut bytes_mut = BytesMut::new();
+        encode_length_delimiter(self.file_id as usize, &mut bytes_mut).unwrap();
+        encode_length_delimiter(self.offset as usize, &mut bytes_mut).unwrap();
+        bytes_mut.to_vec()
+    }
+
+    pub(crate) fn decode(pos: &Vec<u8>) -> Option<Self> {
+        let mut bytes = pos.as_slice();
+        let file_id = decode_length_delimiter(&mut bytes).ok()? as u32;
+        let offset = decode_length_delimiter(&mut bytes).ok()? as u64;
+        Some(LogRecordPos { file_id, offset })
+    }
 }
 
 /// types of a record in a log

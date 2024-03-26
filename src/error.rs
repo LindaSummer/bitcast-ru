@@ -63,6 +63,9 @@ pub enum Errors {
 
     #[error("decode failure")]
     DecodingError,
+
+    #[error("fail to get merge lock, its in progress")]
+    MergeInProgress,
 }
 
 pub type Result<T> = result::Result<T, Errors>;
